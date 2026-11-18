@@ -8,11 +8,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts });
     this.apply();
   }
   apply() {
@@ -103,6 +103,7 @@ export class Menu {
         <label class="chk"><input type="checkbox" id="set-blood"> Blut und Blutlachen</label>
         <label class="chk"><input type="checkbox" id="set-standoff"> Duell-Eröffnung (ziehen, wenn der Gegner zuckt)</label>
         <label class="chk"><input type="checkbox" id="set-replay"> Wiederholung des Todesstoßes</label>
+        <label class="chk"><input type="checkbox" id="set-aimCuts"> Hiebrichtung per Mausbewegung (Maus kurz ziehen, dann klicken)</label>
         <h2>Dōjō <span id="shop-honor"></span></h2>
         <p class="hint">Ehre gibt es für jeden Besiegten und jede überstandene Welle. Was du hier nimmst, bleibt.</p>
         <div id="shop"></div>
@@ -118,7 +119,7 @@ export class Menu {
       show();
       inp.addEventListener('input', () => { S.set(key, +inp.value); show(); });
     }
-    for (const key of ['blood', 'standoff', 'replay']) {
+    for (const key of ['blood', 'standoff', 'replay', 'aimCuts']) {
       const inp = $('set-' + key);
       inp.checked = S[key];
       inp.addEventListener('change', () => S.set(key, inp.checked));

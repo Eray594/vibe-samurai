@@ -279,3 +279,9 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 #drill span b { color: var(--gold); }
 #drill span { font-size: 13px; line-height: 1.4; }
 #drill i { font-style: normal; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ---- stamina, under the posture bar */
+#stamina { position: absolute; left: 50%; bottom: 46px; transform: translateX(-50%); width: 300px; }
+#stamina .track { height: 4px; background: rgba(0,0,0,0.6); border: 1px solid rgba(190,150,96,0.25); }
+#stamina i { display: block; height: 100%; width: 100%; background: #8fc7a0; transition: width .08s linear; }
+#stamina.out i { background: #c8503c; }

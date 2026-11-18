@@ -36,7 +36,7 @@ const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危'
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
 const ZONE_KNOCK = { head: 1.25, torso: 1.0, armR: 0.5, armL: 0.5, legR: 0.6, legL: 0.6 };
-const STANCE = { guard: 'Chūdan', swing: 'Hieb', charge: 'Aufgeladen', parry: 'Deckung', free: 'Freie Klinge', iai: 'Iai – gespannt', bind: 'Klingenbindung', hold: 'Im Griff' };
+const STANCE = { guard: 'Chūdan', swing: 'Hieb', charge: 'Aufgeladen', parry: 'Deckung', free: 'Freie Klinge', iai: 'Iai – gespannt', bind: 'Klingenbindung', hold: 'Im Griff', hang: 'An der Kante' };
 const up = (t) => t.toUpperCase();
 const MAX_CORPSES = 10;
 const MAX_KUNAI = 12;
@@ -404,6 +404,7 @@ class Game {
       if (hs.type === 'weapon') {
         if (hs.weapon.id < w.id) continue; // handled by the other weapon's listener
         w.lastHit.set(key, this.time);
+        w.contactT = hs.weapon.contactT = this.time;
         this.clash(w, hs.weapon, c);
       } else if (hs.type === 'limb') {
         if (c.speed < 3) continue;
@@ -418,6 +419,7 @@ class Game {
         if (w.thrower && k.team === w.thrower.team) continue;
         if (!w.attached && c.speed < 6) continue;
         w.lastHit.set(key, this.time);
+        w.contactT = this.time;
         this.bodyHit(w, hs, c);
       } else if (hs.horse) {
         if (c.speed < 4 || (w.thrower || w.owner)?.team === hs.horse.rider.team) continue;
@@ -427,6 +429,7 @@ class Game {
       } else if (c.speed > 4) {
         w.lastHit.set(key, this.time);
         const dir = c.rel.clone().normalize();
+        if (hs.breakable || hs.mat) w.contactT = this.time;
         if (hs.breakable) this.arena.breakables.weaponHit(hs.breakable, w, c.point, dir, c.speed);
         if (hs.mat && w.attached && w.def.sever && c.wshape?.hsPart === 'blade' && c.speed > 6.5
             && this.arena.cutMat(hs.mat, c.point, dir, c.speed)) {
@@ -436,6 +439,8 @@ class Game {
         } else if (hs.kind === 'wood') {
           this.audio.wood(c.speed / 12);
           this.effects.splinters(c.point, dir, 4);
+          // a full-blooded cut into a post or a trunk: the edge bites and holds
+          if (!hs.breakable && !hs.mat && w.attached && w.def.type !== 'club' && c.wshape?.hsPart === 'blade' && c.speed > 9.5 && w.owner?.liveT > 0) this.stickBlade(w.owner, 0.4);
         } else {
           this.audio.clank(c.speed / 22, 0.7);
           this.effects.sparksAt(c.point, c.speed * 0.8, 0.6);
@@ -515,6 +520,7 @@ class Game {
       if (D.isPlayer) this.shake = Math.max(this.shake, crush ? 0.7 : 0.25);
       if (crush && D.isPlayer && !broke) this.callout('DURCHBROCHEN!', point, 'crit');
       if (A.isPlayer && s > 4) this.callout('GEBLOCKT', point, 'small');
+      (D.isPlayer ? this.ctl : D.ctl)?.spend(0.05 * impact);       // holding a blow costs breath
       if (broke) this.onGuardBroken(D, point);
     }
   }
@@ -614,6 +620,9 @@ class Game {
     const { sev, ev } = k.inj.wound(zone, raw, kind, def.armorMul ?? 1);
     const deflected = ev.includes('deflect');
     if (def.thrown) w.dead = true;
+    // driven in deep, the blade does not come out again at once
+    if (w.attached && attacker && !deflected && !attacker.atk?.pass && def.type !== 'club'
+        && ((kind === 'thrust' && sev > 0.22) || (kind === 'cut' && zone === 'torso' && sev > 0.65))) this.stickBlade(attacker, 0.3 + Math.min(0.3, sev * 0.3));
 
     // ---- dismemberment: a clean, hard cut through a limb or the neck
     let severed = null;
@@ -995,13 +1004,23 @@ class Game {
 
   /** Jumping against the podium: pull yourself up over the edge. */
   mantle(k) {
-    if (k.state !== 'active' || !k.airborne) return;
+    if (k.state !== 'active' || !k.airborne || k.hang) return;
     const p = k.core.position, feet = p.y - 0.98, mv = k.intent.move;
+    const ai = !(k.isPlayer || k.human);
     for (const b of this.platforms) {
-      if (feet > b.top - 0.02 || feet < b.top - 1.35) continue;
+      if (feet > b.top - 0.02 || feet < b.top - 1.8) continue;
       const cx = clamp(p.x, b.x0, b.x1), cz = clamp(p.z, b.z0, b.z1);
       const dx = cx - p.x, dz = cz - p.z, d = Math.hypot(dx, dz);
       if (d > 0.7 || d < 0.001 || mv.x * dx + mv.z * dz <= 0) continue;
+      if (!ai && feet < b.top - 0.6 && b.top - 1.6 > k.groundY + 0.15) {      // only where there is room to hang
+        // the edge is above the chest: catch it with the hands and hang
+        if (k.core.velocity.y < 1.5) {
+          k.hang = { x: cx, z: cz, nx: -dx / d, nz: -dz / d, y: b.top - 0.62, top: b.top, t: 0 };
+          this.audio.thud(0.4);
+          this.effects.dust(_a.set(cx, b.top, cz), 5);
+        }
+        return;
+      }
       const need = Math.sqrt(2 * 9.82 * (b.top + 0.14 - feet));
       if (k.core.velocity.y < need) k.core.velocity.y = need;
       if (feet > b.top - 0.35) { k.core.velocity.x = dx / d * 3; k.core.velocity.z = dz / d * 3; }     // over the edge
@@ -1012,7 +1031,7 @@ class Game {
 
   /** Light fighters slip far and are hard to catch; armour makes the step short but quick to repeat. */
   dodgeFor(skin) {
-    if (skin.prot < 0.3) return { speed: 1.18, time: 0.23, iframe: 0.34, cd: 0.5 };
+    if (skin.prot < 0.3) return { speed: 1.18, time: 0.23, iframe: 0.36, cd: 0.5, roll: true };
     if (skin.prot > 0.6) return { speed: 0.86, time: 0.16, iframe: 0.24, cd: 0.36 };
     return { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
   }
@@ -1064,6 +1083,122 @@ class Game {
       }
       return;
     }
+  }
+
+  onSkid(k) {
+    this.effects.dust(k.getPos(_a), 9, 1.5);
+    this.audio.whooshBurst(0.3);
+  }
+
+  onClimb(k) {
+    this.effects.dust(_a.set(k.core.position.x, k.core.position.y + 0.6, k.core.position.z), 5);
+    this.audio.thud(0.35);
+  }
+
+  /** Knocked down but awake: a press at the right moment rolls straight back to the feet. One try per fall. */
+  tryTech(k, ctl) {
+    if (k.state !== 'ragdoll' || k.dead || k.techTried || !k.ragBodies) return false;
+    k.techTried = true;
+    const pel = k.ragBodies.pelvis;
+    if (k.ragTime < 0.15 || k.ragTime > 1.1 || pel.position.y > 1.4 || !k.inj.canStand || k.inj.consciousness < 0.3 || ctl.exhausted) return false;
+    const vx = pel.velocity.x, vz = pel.velocity.z, sp = Math.hypot(vx, vz);
+    k.getUp();
+    k.blendDur = 0.26; k.balance = 0.85; k.staggerT = 0.1;
+    k.iframeT = Math.max(k.iframeT, 0.5);
+    if (sp > 0.8) {
+      // keep the momentum: roll off in the direction of the fall
+      k.core.velocity.x = vx / sp * Math.min(sp, 6); k.core.velocity.z = vz / sp * Math.min(sp, 6);
+      k.rollAxis.set(vz / sp, 0, -vx / sp);
+    } else { const f = k.forward(_b); k.rollAxis.set(-f.z, 0, f.x); }
+    k.rollT = k.rollDur;
+    ctl.spend(0.2);
+    this.effects.dust(k.getPos(_a), 12, 1.4);
+    this.audio.whooshBurst(0.6);
+    if (k.isPlayer || k.human) this.callout('ABGEROLLT!', null, 'parry');
+    return true;
+  }
+
+  /** In the air, well above an opponent: whom a cut started now should fall on. */
+  plungeTarget(k, ctl) {
+    if (!k.airborne || !k.weapon?.attached) return null;
+    const me = k.getPos(_a).clone();
+    const fx = -Math.sin(ctl.yaw), fz = -Math.cos(ctl.yaw);
+    let best = null, bd = 6.5;
+    for (const f of this.fighters) {
+      if (f.team === k.team || f.state !== 'active' || f.dead || f.mountH > 0) continue;
+      const p = f.getPos(_b), dx = p.x - me.x, dz = p.z - me.z, d = Math.hypot(dx, dz);
+      if (me.y - p.y < 1.0 || d > bd) continue;
+      if (f !== ctl.lock && d > 2 && (dx * fx + dz * fz) / d < 0.3) continue;
+      bd = d; best = f;
+      if (f === ctl.lock) break;
+    }
+    return best;
+  }
+
+  /** Aim the fall at `tgt`. Returns the time until impact. */
+  startPlunge(k, tgt) {
+    const me = k.core.position, tp = tgt.core.position;
+    const h = Math.max(0.3, me.y - tp.y - 0.9), v0 = 3;
+    const t = (-v0 + Math.sqrt(v0 * v0 + 2 * 9.82 * h)) / 9.82;
+    const dx = tp.x - me.x, dz = tp.z - me.z;
+    const v = k.core.velocity;
+    v.y = -v0;
+    v.x = clamp(dx / t, -15, 15); v.z = clamp(dz / t, -15, 15);
+    k.iframeT = Math.max(k.iframeT, 0.2);
+    this.audio.whooshBurst(1);
+    if (k.isPlayer) this.fx.fovKick = 1;
+    return t;
+  }
+
+  plungeHit(k, tgt, ctl) {
+    const w = k.weapon;
+    if (!w?.attached || tgt.state !== 'active') return;
+    const point = tgt.getHeadPos(new THREE.Vector3());
+    if (tgt.iframeT > 0) { if (k.isPlayer) this.callout('VERFEHLT', point, 'small'); return; }
+    const f = k.forward(new THREE.Vector3());
+    w.lastHit.set(tgt.core.id, this.time);
+    w.contactT = this.time;
+    k.liveT = 0.3; k.swingHeavy = true;
+    const broke = tgt.addPosture(0.5 * tgt.postureMax);
+    this.bodyHit(w, tgt.core.hs, { other: tgt.core, shape: tgt.core.shapes[2], wshape: { hsPart: 'blade' }, point, rel: new THREE.Vector3(f.x * 4, -14, f.z * 4), speed: 15 });
+    if (tgt.state === 'active') {
+      tgt.goRagdoll(new THREE.Vector3(f.x * 2.5, -1, f.z * 2.5), 'torso', tgt.dead);
+      tgt.getUpAt = rand(1.8, 2.6) + (1 - tgt.inj.vitality) * 2;
+    }
+    k.core.velocity.x *= 0.2; k.core.velocity.z *= 0.2;
+    this.effects.impact(point, 2); this.effects.dust(point.clone().setY(0), 20, 2);
+    this.audio.thud(1.3);
+    this.addHitStop(0.1); this.slowT = Math.max(this.slowT, 0.35); this.shake = Math.max(this.shake, 0.8);
+    if (k.isPlayer || k.human) this.callout('STURZANGRIFF!', point, 'crit');
+    if (broke && tgt.state === 'active') this.onGuardBroken(tgt, point);
+  }
+
+  /**
+   * A heavy cut that met nothing: its weight carries the body round and it takes a moment to
+   * recover. Returns true if it was a miss.
+   */
+  checkWhiff(k, a, ctl) {
+    const w = k.weapon;
+    if (!a || !w?.attached || k.state !== 'active' || a.pass || a.spin || !(a.heavy || w.def.mass > 3)) return false;
+    if (this.time - (w.contactT ?? -9) < a.strikeDur + 0.1) return false;
+    const sign = Math.sign(a.end.x - a.wind.x) || (Math.random() < 0.5 ? 1 : -1);
+    const m = Math.min(1.6, 0.6 + w.def.mass * 0.25);
+    k.core.angularVelocity.y -= sign * 4.2 * m;
+    if (ctl) ctl.faceYaw -= sign * 0.45 * m;
+    else k.intent.yaw -= sign * 0.45 * m;
+    a.recoverDur += 0.22 * m;
+    k.balance = Math.max(0.25, k.balance - 0.14 * m);
+    k.staggerT = Math.max(k.staggerT, 0.2);
+    if (k.isPlayer) this.audio.whooshBurst(0.5);
+    return true;
+  }
+
+  /** The blade is caught (in a body, in wood) and has to be wrenched free. */
+  stickBlade(k, t) {
+    if (!k || k.stuckT > 0 || k.state !== 'active') return;
+    k.stuckT = t;
+    this.audio.thud(0.35);
+    if (k.isPlayer) this.callout('KLINGE STECKT', null, 'small');
   }
 
   onSlide(k) {
@@ -1210,6 +1345,7 @@ class Game {
     if (Math.hypot(tp.x - kp.x, tp.z - kp.z) > w.def.reach + 0.5) return;
     if (this.time - (w.lastHit.get(target.core.id) ?? -9) < 0.35) return;
     w.lastHit.set(target.core.id, this.time);
+    w.contactT = this.time;
     const f = k.forward(new THREE.Vector3());
     const rel = new THREE.Vector3(f.x * 0.4 - Math.cos(k.yawActual) * 0.8, -0.1, f.z * 0.4 + Math.sin(k.yawActual) * 0.8).normalize().multiplyScalar(13);
     const point = target.parts.torso.position.clone().add(_c.set(0, 0.25, 0));
@@ -1436,7 +1572,7 @@ class Game {
       weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), death: $('death'),
       posture: $('posture-fill'), postureBox: $('posture'), tools: $('tools'), mode: $('mode-label'), skin: $('skin-select'),
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
-      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'),
+      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'), stamina: $('stamina-fill'), staminaBox: $('stamina'),
     };
     const start = () => { this.audio.init(); this.input.lock(); };
     $('btn-start').addEventListener('click', start);
@@ -1619,6 +1755,8 @@ class Game {
     const tools = `Verbände ${this.ctl.heals}${this.ctl.free ? ' · Freie Klinge' : ''}${this.ctl.lock ? ' · Ziel erfasst' : ''}`;
     if (tools !== this.lastTools) { ui.tools.textContent = tools; this.lastTools = tools; }
     ui.posture.style.width = (clamp(P.posture / P.postureMax, 0, 1) * 100).toFixed(1) + '%';
+    ui.stamina.style.width = (this.ctl.stamina * 100).toFixed(1) + '%';
+    ui.staminaBox.classList.toggle('out', this.ctl.exhausted);
     ui.postureBox.classList.toggle('broken', P.brokenT > 0);
     const lines = inj.status();
     const html = lines.length ? lines.map((l) => `<div>${l}</div>`).join('') : '<div class="ok">Unverletzt</div>';
@@ -1643,6 +1781,8 @@ class Game {
         prompt = d < 1.6 ? '<kbd>E</kbd> Waffe aufheben' : loose ? `<kbd>E</kbd> ${loose.weapon.def.name} nehmen` : 'Entwaffnet – hol deine Waffe oder nimm eine andere';
       } else if (P.holding) {
         prompt = '<kbd>LMB</kbd> / <kbd>G</kbd> <b class="kill">Werfen</b>';
+      } else if (P.hang) {
+        prompt = '<kbd>Space</kbd> hochziehen · <kbd>S</kbd> loslassen';
       } else if (this.findFinisherTarget(P)) {
         prompt = '<kbd>LMB</kbd> <b class="kill">Todesstoß</b>';
       } else {

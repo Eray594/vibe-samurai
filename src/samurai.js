@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import {
   materials, setGroup, G, MASK, toC, toT, qToT, quatError, worldInertiaMul, clamp, dampFactor, smooth, rand,
-  interpPos, interpQuat, snapPrev,
+  interpPos, interpQuat, snapPrev, ARM_SHAPE_GROUP,
 } from './physics.js';
 import { Weapon } from './weapons.js';
 import { Injuries } from './injury.js';
@@ -186,7 +186,15 @@ export class Samurai {
     this.aimT = 0;               // ranged: drawing / aiming
     this.atk = null;             // the cut being played right now (set by the controller)
     this.postureMul = 1;         // stance: how hard the cuts press on a guard
-    this.dodge = null;           // { speed, time, iframe, cd }: step profile (light fighters go further)
+    this.dodge = null;           // { speed, time, iframe, cd, roll }: step profile (light fighters go further, and roll)
+    this.hang = null;            // hanging from an edge: { x, z, nx, nz, y, top, t }
+    this.rollT = 0;              // somersault in progress (visual; the body itself just dashes)
+    this.rollDur = 0.44;
+    this.rollAxis = new THREE.Vector3(1, 0, 0);
+    this.skidT = 0;              // feet braking after a hard change of direction
+    this.stuckT = 0;             // the blade is caught in something
+    this.stumbleT = 0;
+    this.techTried = false;      // one chance per knock-down to roll back to the feet
 
     const { parts, mats } = buildParts(this.style);
     this.parts = parts;
@@ -215,6 +223,9 @@ export class Samurai {
     this.prevTargetQuat = new THREE.Quaternion();
     this.weaponStuckT = 0;
     this.yawActual = this.intent.yaw;
+    this.rollQ = new THREE.Quaternion();
+    this.rollPiv = new THREE.Vector3();
+    this.rollDrop = 0;
 
     this.createCore(opts.position, this.intent.yaw);
     this.weapon = null;
@@ -226,13 +237,17 @@ export class Samurai {
 
   // ---------------------------------------------------------------- physics body
   createCore(pos, yaw) {
-    const b = new CANNON.Body({ mass: 80, material: materials.body, linearDamping: 0.05, angularDamping: 0.15 });
+    const b = new CANNON.Body({ mass: 80, material: materials.core, linearDamping: 0.05, angularDamping: 0.15 });
     b.addShape(new CANNON.Box(new CANNON.Vec3(0.17, 0.1, 0.12)), new CANNON.Vec3(0, 0, 0));
     b.addShape(new CANNON.Box(new CANNON.Vec3(0.2, 0.24, 0.13)), new CANNON.Vec3(0, 0.33, 0));
     b.addShape(new CANNON.Sphere(0.14), new CANNON.Vec3(0, 0.73, 0));
     b.addShape(new CANNON.Box(new CANNON.Vec3(0.13, 0.24, 0.1)), new CANNON.Vec3(0, -0.36, 0));
     // arm colliders follow the IK pose every frame, so blades can hit the arms
-    for (const n of ARM_SHAPES) b.addShape(new CANNON.Box(new CANNON.Vec3(0.055, 0.15, 0.055)), new CANNON.Vec3(0, 0.3, -0.3));
+    for (const n of ARM_SHAPES) {
+      const arm = new CANNON.Box(new CANNON.Vec3(0.055, 0.15, 0.055));
+      arm.collisionFilterGroup = ARM_SHAPE_GROUP;
+      b.addShape(arm, new CANNON.Vec3(0, 0.3, -0.3));
+    }
     const tags = [['pelvis', 'torso'], ['torso', 'torso'], ['head', 'head'], ['thigh', 'leg'], ...ARM_SHAPES.map((n) => [n, n.endsWith('R') ? 'armR' : 'armL'])];
     b.shapes.forEach((sh, i) => { sh.hsPart = tags[i][0]; sh.hsZone = tags[i][1]; });
     b.position.set(pos.x, STAND_H, pos.z);
@@ -368,6 +383,10 @@ export class Samurai {
     this.iframeT = Math.max(0, this.iframeT - dt);
     this.kickCd = Math.max(0, this.kickCd - dt);
     this.slideT = Math.max(0, this.slideT - dt);
+    this.rollT = Math.max(0, this.rollT - dt);
+    this.skidT = Math.max(0, this.skidT - dt);
+    this.stuckT = Math.max(0, this.stuckT - dt);
+    if (this.hang) { this.hang.t += dt; if (this.hang.t > 4 || this.staggerT > 0.2) this.letGo(); }
     this.sweepJumpT = Math.max(0, this.sweepJumpT - dt);
     if (this.heldBy && (this.state !== 'active' || this.heldBy.state !== 'active' || this.heldBy.holding !== this)) this.heldBy = null;
     if (this.state === 'active') {
@@ -383,7 +402,7 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.slideT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : 0.07;
+    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : 0.07;
     this.crouch += (sit - this.crouch) * dampFactor(9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
@@ -442,6 +461,24 @@ export class Samurai {
       this.wallJumps = 0;
       this.game.onFighterLand?.(this, -b.velocity.y);
     } else if (!this.airborne && y > STAND_H + 0.4) this.airborne = true;     // walked off an edge
+    if (this.climb) {
+      const c = this.climb;
+      c.t -= h;
+      if (b.position.y - STAND_H > c.top - 0.08) { b.velocity.x = -c.nx * 3.2; b.velocity.z = -c.nz * 3.2; }
+      if (c.t <= 0 || !this.airborne) this.climb = null;
+    }
+    if (this.hang) {
+      // fingers on the edge: the body hangs still below it, facing the wall
+      const g = this.hang;
+      b.velocity.setZero();
+      b.position.x += (g.x + g.nx * 0.34 - b.position.x) * 0.25;
+      b.position.y += (g.y - b.position.y) * 0.25;
+      b.position.z += (g.z + g.nz * 0.34 - b.position.z) * 0.25;
+      this.intent.yaw = Math.atan2(g.nx, g.nz);
+      this.intent.move.set(0, 0, 0);
+      C.v.set(0, m * 9.82, 0);
+      b.applyForce(C.v);
+    }
     if (this.heldBy) {
       // dragged along in front of whoever has the collar
       const h = this.heldBy, hp = h.core.position, f = h.forward(T.fwd);
@@ -468,6 +505,24 @@ export class Samurai {
     if (this.airborne) maxA *= 0.45;
     if (this.dashT > 0) maxA = 0;
     if (this.slideT > 0) { maxA = 0; b.velocity.x *= 1 - 1.1 * h; b.velocity.z *= 1 - 1.1 * h; }
+    if (this.isPlayer || this.human) {
+      // weight: turning hard out of a run the feet have to brake first
+      const sp = Math.hypot(b.velocity.x, b.velocity.z), ml = Math.hypot(mv.x, mv.z);
+      if (this.skidT <= 0 && !this.airborne && this.dashT <= 0 && sp > 5.2 && ml > 1 && (b.velocity.x * mv.x + b.velocity.z * mv.z) / (sp * ml) < -0.25) {
+        this.skidT = 0.26;
+        this.game.onSkid?.(this);
+      }
+      if (this.skidT > 0) maxA *= 0.38;
+    }
+    // off balance: the feet go where they have to, not where they are told
+    if (this.staggerT > 0 && bal < 0.55 && !this.airborne && !this.hang) {
+      this.stumbleT -= h;
+      if (this.stumbleT <= 0) {
+        this.stumbleT = rand(0.18, 0.32);
+        const a = Math.random() * Math.PI * 2, s = (0.55 - bal) * 3.2;
+        b.velocity.x += Math.cos(a) * s; b.velocity.z += Math.sin(a) * s;
+      }
+    }
     const al = Math.hypot(ax, az);
     if (al > maxA) { ax *= maxA / al; az *= maxA / al; }
     C.v.set(m * ax, 0, m * az);
@@ -491,7 +546,8 @@ export class Samurai {
       const wt = this.weaponTarget;
       const armStr = this.inj.armStrength(wpn.def.twoHanded, this.offHanded);
       const F = wpn.drive(wt.pos, wt.vel, wt.quat, wt.angVel,
-        this.intent.power * (0.55 + 0.45 * bal) * (0.18 + 0.82 * armStr) * (this.brokenT > 0 ? 0.35 : 1), 0.3 + 0.7 * armStr);
+        this.intent.power * (0.55 + 0.45 * bal) * (0.18 + 0.82 * armStr) * (this.brokenT > 0 ? 0.35 : 1) * (this.stuckT > 0 ? 0.12 : 1), 0.3 + 0.7 * armStr);
+      if (this.stuckT > 0) { wpn.body.velocity.scale(0.6, wpn.body.velocity); wpn.body.angularVelocity.scale(0.6, wpn.body.angularVelocity); }
       // reaction: heavy weapons pull the knight around
       C.v2.set(-F.x * 0.28, -(F.y - wpn.body.mass * 9.82) * 0.28, -F.z * 0.28);
       this.localToWorld(T.a.set(0, WAIST_Y + SHOULDER.y, 0), T.b);
@@ -596,6 +652,8 @@ export class Samurai {
     this.attackPhase = null;
     this.atk = null;
     this.slideT = 0;
+    this.hang = null; this.climb = null; this.rollT = 0; this.stuckT = 0; this.skidT = 0;
+    this.techTried = false;
     this.bound = false;
     this.aimT = 0;
     if (this.holding) { this.holding.heldBy = null; this.holding = null; }
@@ -652,6 +710,7 @@ export class Samurai {
     this.brokenT = 0;
     this.blendT = 1;
     this.slideT = 0; this.bound = false; this.heldBy = null; this.thrownT = 0;
+    this.hang = null; this.rollT = 0; this.stuckT = 0; this.skidT = 0;
     if (this.holding) { this.holding.heldBy = null; this.holding = null; }
     if (this.weapon) {
       this.weapon.attach();
@@ -667,7 +726,7 @@ export class Samurai {
     if (this.state !== 'active' || this.dashCd > 0 || this.airborne) return false;
     const legs = this.inj.legStrength;
     if (legs < 0.35) return false;
-    if (this.heldBy || this.mountH > 0 || this.bound) return false;
+    if (this.heldBy || this.mountH > 0 || this.bound || this.hang) return false;
     const b = this.core;
     const dg = this.dodge || { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
     const wet = 1 + (1 - (this.game.grip ?? 1)) * 0.5;                 // you keep sliding on wet ground
@@ -680,6 +739,11 @@ export class Samurai {
     this.dashT = dg.time * wet;
     this.iframeT = dg.iframe;
     this.slideT = 0;
+    if (dg.roll && this.ghostT <= 0) {
+      // light on the feet: the step is a roll over the shoulder
+      this.rollT = this.rollDur;
+      this.rollAxis.set(dir.z, 0, -dir.x).normalize();
+    }
     this.dashCd = this.isPlayer || this.human ? dg.cd : 1.2;
     this.game.onFighterDash?.(this, dir);
     return true;
@@ -701,6 +765,27 @@ export class Samurai {
     v.y = 6.0 * (0.6 + 0.4 * this.inj.legStrength);
     this.wallJumps++;
     return true;
+  }
+
+  /** Hanging from an edge: pull up over it. */
+  climbUp() {
+    const g = this.hang;
+    if (!g) return false;
+    this.hang = null;
+    const feet = this.core.position.y - STAND_H;
+    const v = this.core.velocity;
+    v.y = Math.sqrt(2 * 9.82 * Math.max(0.1, g.top + 0.2 - feet));
+    v.x = 0; v.z = 0;
+    this.climb = { nx: g.nx, nz: g.nz, top: g.top, t: 0.9 };      // over the edge once the feet clear it
+    return true;
+  }
+
+  /** Hanging from an edge: let go and drop. */
+  letGo() {
+    const g = this.hang;
+    if (!g) return;
+    this.hang = null;
+    if (this.state === 'active') { this.core.velocity.x = g.nx * 1.2; this.core.velocity.z = g.nz * 1.2; }
   }
 
   /** Drop out of a sprint and slide along the ground, under high blows. */
@@ -1018,7 +1103,11 @@ export class Samurai {
     P.pelvis.quaternion.copy(cq);
     // torso
     P.torso.position.set(0, WAIST_Y, 0).applyQuaternion(cq).add(cp);
-    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(-this.lean - this.runLean, this.twist, 0, 'YXZ')));
+    // off balance shows: the upper body sways and pitches until the feet are under it again
+    const wob = clamp(1 - this.balance / 0.7, 0, 1) * (this.staggerT > 0 ? 1 : 0.45);
+    const wt = this.game.time * 7 + this.id * 1.7;
+    const sway = Math.sin(wt) * 0.24 * wob, pitch = (0.16 + Math.sin(wt * 0.63) * 0.1) * wob + (this.skidT > 0 ? -0.3 * (this.skidT / 0.26) : 0);
+    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(-this.lean - this.runLean - pitch, this.twist, sway, 'YXZ')));
     const tq = P.torso.quaternion;
     P.head.position.set(0, 0.5, 0).applyQuaternion(tq).add(P.torso.position);
     P.head.quaternion.copy(tq).multiply(T.q2.setFromEuler(T.eul.set((this.lean + this.runLean) * 0.6, -this.twist * 0.6, 0, 'YXZ')));
@@ -1043,7 +1132,8 @@ export class Samurai {
     }
     if (!handR) handR = this.localToWorld(L(0.25, 0.12, 0.12), new THREE.Vector3());
     // a free hand goes to a bad body wound
-    if (this.aimT > 0 && !this.severed.has('fArmL')) handL = this.localToWorld(L(-0.12, 0.46, 0.56), new THREE.Vector3());   // bow / gun raised
+    if (this.hang && !this.severed.has('fArmL')) handL = new THREE.Vector3(this.hang.x - this.hang.nz * 0.2, this.hang.top + 0.02, this.hang.z + this.hang.nx * 0.2);   // gripping the edge
+    else if (this.aimT > 0 && !this.severed.has('fArmL')) handL = this.localToWorld(L(-0.12, 0.46, 0.56), new THREE.Vector3());   // bow / gun raised
     if (!handL) handL = this.localToWorld(this.inj.parts.torso > 0.45 ? L(-0.06, 0.2, 0.2) : L(-0.27, 0.16, 0.1), new THREE.Vector3());
     const poleR = T.b.copy(T.right).multiplyScalar(0.7).add(T.e.set(0, -0.7, 0)).addScaledVector(T.back, 0.3);
     solveTwoBone(shR, handR, ARM.upper, ARM.fore, poleR, T.mid, T.end);
@@ -1081,6 +1171,10 @@ export class Samurai {
         // astride: knees out, feet in the stirrups
         foot.copy(hip).addScaledVector(T.right, side * 0.3).addScaledVector(T.fwd, 0.12);
         foot.y = hip.y - 0.66;
+      } else if (this.rollT > 0 || this.hang) {
+        // tucked in (rolling) or dangling (hanging)
+        foot.copy(hip).addScaledVector(T.fwd, this.hang ? 0.05 : 0.22);
+        foot.y = hip.y - (this.hang ? 0.84 : 0.34);
       } else if (this.slideT > 0) {
         // one leg stretched out in front, the other folded under
         foot.copy(hip).addScaledVector(T.fwd, side > 0 ? 0.78 : 0.3).addScaledVector(T.right, side * 0.08);
@@ -1102,6 +1196,21 @@ export class Samurai {
       solveTwoBone(hip, foot, LEG.thigh, LEG.shin, pole, T.mid, T.end);
       placeLimb(P['thigh' + name], hip, T.mid, T.back);
       placeLimb(P['shin' + name], T.mid, T.end, T.back);
+    }
+
+    // ---- the roll: the whole tucked figure turns once over itself
+    if (this.rollT > 0) {
+      const u = 1 - this.rollT / this.rollDur;
+      const R = this.rollQ.setFromAxisAngle(this.rollAxis, Math.PI * 2 * smooth(u));
+      const c = this.core.position;
+      const piv = this.rollPiv.set(c.x, gy + 0.8, c.z);
+      this.rollDrop = -0.16 * Math.sin(Math.PI * u);       // lifted a little at the top of the turn so the head clears the ground
+      for (const n of PART_NAMES) {
+        const o = P[n];
+        o.position.sub(piv).applyQuaternion(R).add(piv);
+        o.position.y -= this.rollDrop;
+        o.quaternion.premultiply(R);
+      }
     }
 
     // ---- blend in after getting up
@@ -1146,6 +1255,13 @@ export class Samurai {
       }
     }
     if (this.weapon) this.weapon.sync(dt);
+    if (this.rollT > 0 && this.state === 'active' && this.weapon?.attached) {
+      // the blade goes round with the body
+      const m = this.weapon.mesh;
+      m.position.sub(this.rollPiv).applyQuaternion(this.rollQ).add(this.rollPiv);
+      m.position.y -= this.rollDrop;
+      m.quaternion.premultiply(this.rollQ);
+    }
     const e = this.hitFlash;
     for (const m of this.mats.flash) m.emissive.setRGB(e * e * 0.3, 0, 0);
   }

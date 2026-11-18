@@ -155,6 +155,39 @@ export class PlayerController {
     this.iaiReady = false;
     this.maxHeals = 3;
     this.fixedYaw = false;    // two-player duel: the camera is not ours to turn
+    this.flickX = 0;          // recent mouse travel: a flick just before the click aims the cut
+    this.flickY = 0;
+    this.stamina = 1;         // breath: cuts, steps, sprinting and jumps draw on it
+    this.stamIdle = 9;
+    this.exhaustT = 0;        // out of breath: no sprint, no step, slower cuts
+    this.plunge = null;       // dropping onto someone from above
+  }
+
+  get exhausted() { return this.exhaustT > 0; }
+
+  /** Use up breath. Running dry leaves the fighter winded for a moment. */
+  spend(a) {
+    this.stamina -= a;
+    this.stamIdle = 0;
+    if (this.stamina <= 0) {
+      this.stamina = 0;
+      if (this.exhaustT <= 0) {
+        this.exhaustT = 1.6;
+        if (this.k.isPlayer) this.game.callout('AUSSER ATEM', null, 'small');
+      }
+    }
+  }
+
+  /** Which cut a flick of the mouse asks for (null: no flick, the combo decides). */
+  flickCut(def) {
+    if (!this.game.settings.aimCuts || this.fixedYaw) return null;
+    const x = this.flickX, y = this.flickY;
+    if (Math.hypot(x, y) < 26) return null;
+    const ax = Math.abs(x), ay = Math.abs(y);
+    if (ay > ax * 2.2) return y > 0 ? 'shomen' : 'age';                 // straight down / rising
+    if (ax > ay * 2.2) return x < 0 ? 'yokoR' : 'yokoL';                // level, the way the mouse went
+    if (y > 0) return x < 0 ? 'kesaR' : 'kesaL';                        // diagonal down
+    return 'age';
   }
 
   /** Where the hands rest between cuts: depends on the stance (polearms have only the one). */
@@ -200,6 +233,7 @@ export class PlayerController {
     this.aim = this.pickAim(fx, fz);
     if (!this.aim) this.faceYaw = Math.atan2(-fx, -fz);
     this.rush(9);
+    this.spend(0.22);
     this.iaiCd = 2.2;
     this.game.onIai?.(k, c);
   }
@@ -214,6 +248,7 @@ export class PlayerController {
     this.heals = this.maxHeals;
     this.iaiCharge = 0;
     this.iaiCd = 0;
+    this.stamina = 1; this.exhaustT = 0; this.plunge = null;
   }
 
   /** Called while the player is down: only the camera moves. */
@@ -225,6 +260,10 @@ export class PlayerController {
     this.finisher = null;
     this.k.attackPhase = null;
     this.k.sprinting = false;
+    this.plunge = null;
+    this.stamina = Math.min(1, this.stamina + 0.004);
+    // knocked down: a well-timed press rolls straight back to the feet
+    if (frame.pressed.has('Space') || frame.pressed.has('ShiftLeft')) this.game.tryTech(this.k, this);
   }
 
   valid(f) { return f && !f.disposed && !f.dead && f.state === 'active'; }
@@ -292,13 +331,23 @@ export class PlayerController {
       name = ms.counter; o = { wind: 0.07, power: 1.5, heavy: true };
       this.counterT = 0; this.comboI = 1;
       game.onCounter(k);
-    } else if (k.airborne) { name = ms.air; o = { power: 1.4, heavy: true }; }
+    } else if (k.airborne) {
+      name = ms.air; o = { power: 1.4, heavy: true };
+      // high above someone: come down on him
+      const tgt = game.plungeTarget(k, this);
+      if (tgt) {
+        const t = game.startPlunge(k, tgt);
+        this.plunge = { tgt, t: 0 };
+        name = 'shomen'; o = { wind: Math.max(0.1, t - 0.1), power: 1.75, heavy: true };
+        this.lock = this.lock || null;
+      }
+    }
     else if (k.sprinting) {
       name = ms.sprint; o = { power: 1.3, wind: def.swing.wind * 0.8 }; this.sprintAttack = true; this.comboI = 0;
       if (name === 'nuki') o = { power: 1.45, wind: 0.12, heavy: true };
     } else {
       if (this.comboT > 0.9) this.comboI = 0;
-      name = ms.combo[this.comboI % ms.combo.length];
+      name = this.flickCut(def) || ms.combo[this.comboI % ms.combo.length];
       if (this.comboI > 0) o.wind = def.swing.wind * Math.max(0.55, 0.85 - 0.07 * this.comboI);   // the chain speeds up
       this.comboI++;
       // the stance colours the plain cuts: low is quick and light, high slow and heavy
@@ -306,7 +355,11 @@ export class PlayerController {
       o.power = 1.15 * st.power;
       if (st.power > 1.1) o.heavy = true;
     }
-    this.runner.start(name, def, o).home = this.homePose(def);
+    if (this.exhausted) o.wind = (o.wind ?? def.swing.wind) * 1.45;       // no breath: everything comes late
+    this.spend(o.heavy ? 0.15 : 0.1);
+    const a0 = this.runner.start(name, def, o);
+    a0.home = this.homePose(def);
+    if (this.plunge) a0.unblockable = true;
     // aim: lock target, else whoever stands in front of the stick / camera
     const fx = moving ? moveX : -Math.sin(this.yaw), fz = moving ? moveZ : -Math.cos(this.yaw);
     this.aim = this.pickAim(fx, fz);
@@ -348,6 +401,12 @@ export class PlayerController {
       this.pitch = clamp(this.pitch - dy * SENS_LOOK * game.settings.sens, -0.9, 0.55);
     } else this.yaw -= dx * SENS_LOOK * game.settings.sens * 0.28;
     k.atk = this.runner.a;
+    const fk = Math.exp(-dt * 11);
+    this.flickX = this.flickX * fk + dx; this.flickY = this.flickY * fk + dy;
+    // breath comes back after a pause (faster standing still, slower behind the guard)
+    this.exhaustT = Math.max(0, this.exhaustT - dt);
+    this.stamIdle += dt;
+    if (this.stamIdle > 0.7) this.stamina = Math.min(1, this.stamina + dt * (inp.rmb ? 0.16 : 0.34));
 
     // ---------- lock-on
     if (pressed.has('Tab') || frame.mmbPressed) {
@@ -378,6 +437,32 @@ export class PlayerController {
     const mx = (-sy * mf + cy * ms) / len, mz = (-cy * mf - sy * ms) / len;   // unit move direction (world)
 
     // ---------- slip-step (Shift) & jump (Space)
+    // ---------- hanging from an edge: up, or let go
+    if (k.hang) {
+      this.runner.cancel();
+      this.finisher = null; this.plunge = null;
+      this.mode = 'hang';
+      it.mode = 'guard'; it.bladeDir = null; it.edgeHint = null; it.edgeExact = false; it.power = 1;
+      this.runner.rest(dt, it, POSES.carry, 8);
+      k.attackPhase = null; k.atk = null; k.sprinting = false;
+      this.faceYaw = it.yaw;
+      if (pressed.has('Space') || pressed.has('KeyW')) { if (k.climbUp()) { this.spend(0.1); game.onClimb(k); } }
+      else if (pressed.has('KeyS') || pressed.has('KeyX') || pressed.has('ShiftLeft')) k.letGo();
+      return;
+    }
+    // ---------- the blade is caught in something: wrench it free
+    if (k.stuckT > 0) { this.runner.cancel(); this.buffer = Math.max(this.buffer, 0); }
+    // ---------- coming down on someone from above
+    if (this.plunge) {
+      const pl = this.plunge, tg = pl.tgt;
+      pl.t += dt;
+      if (!this.valid(tg) || pl.t > 1.6) this.plunge = null;
+      else {
+        const tp = tg.getPos(_q);
+        if (Math.hypot(tp.x - me.x, tp.z - me.z) < 1.25 && me.y - tp.y < 1.5) { this.plunge = null; game.plungeHit(k, tg, this); }
+        else if (!k.airborne) this.plunge = null;
+      }
+    }
     // ---------- locked blade on blade: all there is to do is push
     if (k.bound) {
       this.runner.cancel();
@@ -395,24 +480,25 @@ export class PlayerController {
     }
     if ((pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();
-      if (k.dash(d)) {
+      if (!this.exhausted && k.dash(d)) {
         if (this.runner.phase !== 'strike') this.runner.cancel();
         this.finisher = null;
+        this.spend(0.16);
         game.onDodge(k, d, this);
       }
     }
     if (pressed.has('KeyX') && k.sprinting && !broken) {
-      if (k.startSlide(_v.set(mx, 0, mz))) { this.runner.cancel(); game.onSlide(k); }
+      if (k.startSlide(_v.set(mx, 0, mz))) { this.runner.cancel(); this.spend(0.12); game.onSlide(k); }
     }
     if (pressed.has('Space') && !broken) {
       if (k.airborne) game.tryWallJump(k);
-      else if (k.jump(game.wallRunBoost(k))) game.onJump(k);
+      else if (k.jump(game.wallRunBoost(k))) { this.spend(0.07); game.onJump(k); }
     }
     const shift = inp.down('ShiftLeft') || inp.down('ShiftRight');
     const wantGuard = inp.rmb && armed && !broken && !this.finisher && !k.holding;
     if (frame.rmbPressed) {
       // mashing the guard shrinks the deflection window
-      k.deflectWindow = (this.guardPressT < 0.4 ? DEFLECT_WINDOW * 0.45 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1);
+      k.deflectWindow = (this.guardPressT < 0.4 ? DEFLECT_WINDOW * 0.45 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1);
       this.guardPressT = 0;
     }
     this.iaiCd -= dt;
@@ -483,7 +569,7 @@ export class PlayerController {
         this.iaiCharge = 0; this.iaiReady = false;
         if (c > 0.3 && !this.runner.busy && !wantGuard) this.startIai(c, mx, mz, moving);
       }
-      if (this.buffer > 0 && !wantGuard && k.kickT <= 0 && this.iaiCharge <= 0) {
+      if (this.buffer > 0 && !wantGuard && k.kickT <= 0 && this.iaiCharge <= 0 && k.stuckT <= 0) {
         const a = this.runner.a;
         if (!a) this.startAttack(mx, mz, moving);
         else if (a.phase === 'recover' && a.t > a.recoverDur * 0.2 && !this.finisher) this.startAttack(mx, mz, moving);
@@ -495,6 +581,7 @@ export class PlayerController {
         this.comboT = 0;
         k.attackPhase = this.runner.phase;
         if (ev === 'strike') game.onSwing(k, a.heavy);
+        if (ev === 'recover') game.checkWhiff(k, a, this);
         this.spinTo = spinYaw(a, k);
         if ((a.pass || a.assist) && !a.assisted && a.phase === 'strike' && a.t > a.strikeDur * 0.5) { a.assisted = true; game.assistCut(k, this.aim); }
         // turn into the cut and step in
@@ -547,9 +634,10 @@ export class PlayerController {
     k.atk = this.runner.a;
 
     // ---------- sprint
-    const sprint = shift && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne && k.slideT <= 0;
+    const sprint = shift && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne && k.slideT <= 0 && !this.exhausted;
     k.sprinting = sprint;
-    if (sprint) speedMul *= 1.62;
+    if (sprint) { speedMul *= 1.62; this.spend(dt * 0.085); }
+    if (k.stuckT > 0) speedMul *= 0.15;
 
     // ---------- facing
     const attacking = this.runner.busy;
@@ -575,7 +663,7 @@ export class PlayerController {
 
     // ---------- tools
     if (pressed.has('KeyF') && !broken && this.runner.phase !== 'strike' && !this.finisher && this.mode !== 'hold') {
-      if (k.startKick(k.airborne ? 1.7 : k.sprinting ? 1.6 : 1, k.airborne)) this.runner.cancel();
+      if (k.startKick(k.airborne ? 1.7 : k.sprinting ? 1.6 : 1, k.airborne)) { this.runner.cancel(); this.spend(0.1); }
     }
     if (pressed.has('KeyG') && !broken && this.mode !== 'hold' && !this.runner.busy && !k.airborne) game.tryGrab(k);
     if (k.kickT > 0 && k.kickPower <= 1) it.move.multiplyScalar(0.15);

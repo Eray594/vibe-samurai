@@ -50,7 +50,10 @@ Die vollständige Tastenbelegung:
 | Shift | Ausweichschritt (kurz unverwundbar) · gehalten: Sprint · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
 | Shift in einen Stoß hinein | **Klinge niedertreten**: der Fuß landet auf der Waffe, die Haltung des Gegners leidet schwer |
 | Space | Sprung – Angriff in der Luft = Sturzhieb · an der Mauer nochmal Space: **Wandsprung** · im Sprint gegen die Mauer: höherer Sprung |
-| Space gegen das Podest | **Klettern**: du ziehst dich über die Kante (Stufe und Deck links im Hof) |
+| Space gegen das Podest | **Klettern**: über die Stufe geht es von selbst aufs Deck; vom Boden aus greifst du die Kante und hängst – Space zieht hoch, S lässt los |
+| Maus kurz ziehen, dann LMB | **Hiebrichtung**: von oben, seitlich, schräg oder von unten – je nachdem, wohin die Maus ging (ohne Ziehen läuft die Kombo) |
+| LMB in der Luft über einem Gegner | **Sturzangriff**: aus der Höhe (Podest, Wandsprung) gezielt auf ihn herab, reißt ihn zu Boden und bricht jede Deckung |
+| Space am Boden, im richtigen Moment | **Abrollen**: nach einem Niederschlag sofort wieder auf die Füße (ein Versuch pro Sturz) |
 | Space über einen Feger, dann F | **Sprungtritt** als Konter |
 | X im Sprint | **Rutschen**: unter hohen Hieben durch · LMB dabei: Hieb auf die Beine |
 | LMB | Hieb · mehrfach klicken: Kombo · halten: aufgeladener, schwerer Hieb · im Sprint: Ausfallstoß |
@@ -97,6 +100,19 @@ Der Fortschritt liegt im Browser auf diesem Rechner.
 
 Im selben Menü: Mausempfindlichkeit, Lautstärke, Blut an/aus, Duell-Eröffnung an/aus und
 Wiederholung an/aus.
+
+## Körper und Gewicht
+
+- **Ausdauer** (grüner Balken unter der Haltung): Hiebe, Ausweichen, Sprint, Sprung und geblockte
+  Schläge kosten Atem. Ist er leer, bist du kurz außer Atem – kein Sprint, kein Ausweichschritt,
+  langsamere Hiebe, kürzeres Abwehrfenster. Er kommt nach einer kurzen Pause zurück.
+- **Schwung.** Ein schwerer Hieb, der nichts trifft, reißt den Körper herum und braucht länger
+  zurück in die Deckung. Das gilt auch für Gegner: nach einem ausgewichenen 危-Hieb sind sie offen.
+- **Gleichgewicht.** Wer aus dem Gleichgewicht ist, schwankt sichtbar und stolpert ein paar Schritte.
+- **Rolle.** Leichte Skins (Rōnin, Schatten, Weißer Geist) rollen beim Ausweichen über die Schulter;
+  schwere machen einen kurzen Schritt.
+- **Trägheit.** Wer aus dem Sprint scharf wendet, muss erst abbremsen.
+- **Klinge steckt.** Ein tiefer Stich oder ein voller Hieb in Holz hält die Waffe einen Moment fest.
 
 ## Angriffe lesen
 

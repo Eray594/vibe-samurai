@@ -2,6 +2,7 @@ import * as CANNON from 'cannon-es';
 import * as THREE from 'three';
 
 export const FIXED_DT = 1 / 120;
+export const ARM_SHAPE_GROUP = 2;      // shape-level group of a fighter's arm colliders
 
 // Collision groups
 export const G = {
@@ -29,6 +30,7 @@ export const materials = {
   metal: new CANNON.Material('metal'),
   body: new CANNON.Material('body'),
   wood: new CANNON.Material('wood'),
+  core: new CANNON.Material('core'),      // a standing fighter: carried by his legs, so he slides off walls instead of clinging to them
 };
 
 export function createWorld() {
@@ -39,6 +41,13 @@ export function createWorld() {
   world.solver.tolerance = 0.0005;
   world.defaultContactMaterial.friction = 0.4;
   world.defaultContactMaterial.restitution = 0.05;
+  // Arm colliders exist so blades can hit arms. Against walls and edges they only snag (a hand
+  // resting on a ledge would hold the whole body up), so nothing that does not move collides with them.
+  const addBody = world.addBody.bind(world);
+  world.addBody = (b) => {
+    if (b.mass === 0) for (const s of b.shapes) s.collisionFilterMask = ~ARM_SHAPE_GROUP;
+    return addBody(b);
+  };
   const m = materials;
   const add = (a, b, friction, restitution) =>
     world.addContactMaterial(new CANNON.ContactMaterial(a, b, { friction, restitution }));
@@ -51,6 +60,11 @@ export function createWorld() {
   add(m.wood, m.ground, 0.7, 0.05);
   add(m.wood, m.wood, 0.5, 0.05);
   add(m.body, m.wood, 0.5, 0.0);
+  add(m.core, m.ground, 0.04, 0.0);
+  add(m.core, m.wood, 0.04, 0.0);
+  add(m.core, m.core, 0.3, 0.0);
+  add(m.core, m.body, 0.4, 0.0);
+  add(m.core, m.metal, 0.3, 0.05);
   return world;
 }
 

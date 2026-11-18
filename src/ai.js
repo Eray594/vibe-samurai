@@ -142,6 +142,7 @@ export class Brain {
 
     this.cooldown -= dt;
     this.recoilT = Math.max(0, this.recoilT - dt);
+    if (k.stuckT > 0) { this.recoilT = Math.max(this.recoilT, k.stuckT); this.runner.cancel(); }       // blade caught: nothing to do but pull
     this.blockT = Math.max(0, this.blockT - dt);
     this.strafeT -= dt;
     if (this.strafeT < 0) { this.strafe *= -1; this.strafeT = rand(1.2, 3.5); }
@@ -282,6 +283,7 @@ export class Brain {
       if (spin != null) it.yaw = spin;
       const ev = this.runner.update(dt, it);
       if (ev === 'strike') game.onSwing(k);
+      if (ev === 'recover' && game.checkWhiff(k, this.runner.a, null)) { this.comboLeft = 0; this.recoilT = Math.max(this.recoilT, 0.55); }
       if (ev === 'recover' && this.comboLeft > 0 && canAttack && dist < ideal + 0.9) this.startAttack(false, vit);
       else if (ev === 'done') this.cooldown = rand(0.5, 1.6) / this.aggr;
     } else {
