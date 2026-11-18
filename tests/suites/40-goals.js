@@ -1,0 +1,105 @@
+// Achievements, the daily challenge, the guided first round.
+begin(); step(10);
+const A = g.ach;
+
+// ---- achievements
+const h0 = g.progress.honor;
+const e = solo('ashigaru', V(0, 0, -3)); e.brain.update = () => {};
+e.inj.wound('torso', 9, 'cut', 0); step(240);
+check('Erster Besiegter: Erfolg „Erstes Blut“ und Ehre dafür', A.done.has('kill1') && A.stats.kills === 1 && g.progress.honor === h0 + 10 + 20, [g.progress.honor - h0]);
+const h1 = g.progress.honor; A.check('kills');
+check('Ein Erfolg wird nur einmal belohnt', g.progress.honor === h1);
+g.callout('ABGEWEHRT!', null, 'parry');
+check('Abwehr zählt für die Erfolge', A.done.has('deflect1') && A.stats.deflects === 1);
+g.callout('ABGEWEHRT', null, 'small');
+check('Die Abwehr eines Gegners zählt nicht', A.stats.deflects === 1);
+for (const t of ['TODESSTOSS!', 'PERFEKT AUSGEWICHEN!', 'KLINGE NIEDERGETRETEN!', 'STURZANGRIFF!', 'ABGEROLLT!', 'PFEIL ZERSCHLAGEN!', 'ÜBERSPRUNGEN!']) g.callout(t, null, 'parry');
+check('Die übrigen Taten werden erkannt', ['death1', 'perfect', 'stomp', 'plunge', 'tech', 'arrow', 'sweep'].every((k) => A.done.has(k)), [...A.done]);
+A.add('kills', 98);
+check('Zähler-Erfolge brauchen die volle Zahl', !A.done.has('kill100') && A.stats.kills === 99);
+A.add('kills');
+check('… und fallen genau dann', A.done.has('kill100'));
+A.best('wave', 5); A.best('wave', 3);
+check('Bestwerte gehen nicht zurück', A.stats.wave === 5 && A.done.has('wave5') && !A.done.has('wave10'));
+g.setMode('training'); g.callout('STURZANGRIFF!', null, 'parry'); const pl = A.stats.plunges;
+g.setMode('duel');
+check('Im Training zählt nichts für die Erfolge', pl === 1);
+const saved = JSON.parse(localStorage.getItem('vibesamurai.goals'));
+check('Erfolge sind gespeichert', saved.done.includes('kill100') && saved.stats.kills === 100);
+g.menu.toggle(true);
+check('Das Dōjō zeigt den Stand der Erfolge', document.querySelectorAll('#goals .goal.done').length === A.done.size && $('goal-count').textContent.includes(`${A.done.size} / 21`), $('goal-count').textContent);
+g.menu.toggle(false);
+g.progress.wipe();
+check('Fortschritt löschen löscht auch die Erfolge', A.done.size === 0 && Object.keys(A.stats).length === 0 && JSON.parse(localStorage.getItem('vibesamurai.goals')).done.length === 0);
+
+// ---- daily challenge
+const Dy = g.daily;
+Dy.setDate('2026-01-05');
+const seq = (wave) => Array.from({ length: 8 }, (_, i) => Dy.typeFor(wave, i)).join(',');
+const a1 = [1, 2, 3, 4, 5, 6].map(seq).join('|'), w1 = Dy.weapon, we1 = Dy.weather;
+check('Tagesaufgabe: derselbe Tag ergibt dieselben Gegner', a1 === [1, 2, 3, 4, 5, 6].map(seq).join('|'));
+Dy.setDate('2026-01-06');
+const a2 = [1, 2, 3, 4, 5, 6].map(seq).join('|');
+check('Tagesaufgabe: ein anderer Tag ergibt andere Gegner', a1 !== a2);
+const days = new Set(), wps = new Set();
+for (let d = 1; d <= 28; d++) { Dy.setDate(`2026-02-${String(d).padStart(2, '0')}`); days.add(Dy.weather); wps.add(Dy.weapon); }
+check('Tagesaufgabe: Waffe und Wetter wechseln über den Monat', days.size >= 3 && wps.size >= 4, [days.size, wps.size]);
+Dy.setDate('2026-01-05');
+check('Tagesaufgabe: Waffe und Wetter hängen nur am Datum', Dy.weapon === w1 && Dy.weather === we1);
+play('daily'); step(5);
+const first = g.livingEnemies.map((x) => x.kind.key).join(',');
+check('Tagesaufgabe: startet mit der Waffe und dem Wetter des Tages', g.mode === 'daily' && P.weapon.def.key === w1 && g.weather.key === we1 && g.wave === 1, [P.weapon.def.key, g.weather.key]);
+check('Tagesaufgabe: Welle 1 besteht aus den vorgesehenen Gegnern', first === Array.from({ length: g.livingEnemies.length }, (_, i) => Dy.typeFor(1, i)).join(','), first);
+for (const x of g.livingEnemies) x.inj.wound('torso', 9, 'cut', 0);
+step(300);
+const offer1 = g.perks.options?.map((p) => p.name).join(',');
+g.resetArena(); step(5);
+check('Tagesaufgabe: ein neuer Versuch bringt dieselbe Welle', g.livingEnemies.map((x) => x.kind.key).join(',') === first);
+for (const x of g.livingEnemies) x.inj.wound('torso', 9, 'cut', 0);
+step(300);
+check('Tagesaufgabe: auch die angebotenen Verbesserungen sind dieselben', g.perks.choosing && offer1 === g.perks.options.map((p) => p.name).join(','), offer1);
+g.perks.close(); g.wave = 3; g.spawnWave(); g.kills = 9;
+P.inj.wound('torso', 9, 'cut', 0); step(90);
+const dr = JSON.parse(localStorage.getItem('vibesamurai.daily'));
+check('Tagesaufgabe: das Ergebnis wird mit dem Datum gespeichert', g.runOver && dr.date === '2026-01-05' && dr.wave === 4, dr);
+check('Tagesaufgabe: das heutige Ergebnis steht im Hauptmenü', document.querySelector('#mode-cards [data-mode="daily"] .rec').textContent.includes('Heute: Welle 4'), document.querySelector('#mode-cards [data-mode="daily"] .rec').textContent);
+check('Tagesaufgabe: Welle 3 erreicht – Erfolg „Tagwerk“', A.done.has('daily'));
+Dy.setDate('2026-01-06'); g.front.refresh();
+check('Tagesaufgabe: das Ergebnis von gestern gilt heute nicht', Dy.record === null && document.querySelector('#mode-cards [data-mode="daily"] .rec').textContent.includes('noch nicht gespielt'), [Dy.record, document.querySelector('#mode-cards [data-mode="daily"] .rec').textContent]);
+step(420);
+
+// ---- the guided first round
+const T = g.tutorial, box = $('tutor');
+play('tutorial'); step(10);
+check('Einführung: beginnt bei Schritt 1 mit einem Übungspartner', T.active && T.i === 0 && visible(box) && box.textContent.includes('Schritt 1 / 6') && g.livingEnemies.length === 1 && g.livingEnemies[0].name === 'Übungspartner', box.textContent);
+step(400);
+check('Einführung: der Partner greift anfangs nicht an', P.inj.status().length === 0 && T.i === 0, P.inj.status());
+K.add('KeyW'); step(60); K.delete('KeyW'); K.add('KeyS'); step(200); K.delete('KeyS'); step(10);
+check('Einführung: ein paar Schritte laufen schließt „Bewegen“ ab', T.i === 1, [T.i, T.count]);
+tap('Tab', 3);
+check('Einführung: Ziel erfassen mit Tab', T.i === 2 && !!ctl.lock, T.i);
+fresh(0, 0.2); ctl.lock = T.partner;
+for (let i = 0; i < 12 && T.i === 2; i++) { g.input.lmb = true; g.input.lmbPressed = true; step(4); g.input.lmb = false; step(50); }
+check('Einführung: drei Hiebe schließen „Zuschlagen“ ab', T.i === 3, [T.i, T.count]);
+check('Einführung: der Partner hält das aus', T.partner.state === 'active' && !T.partner.dead);
+fresh(0, 0.2); ctl.lock = T.partner;
+g.input.rmb = true; g.input.rmbPressed = true;
+for (let i = 0; i < 3000 && T.i === 3; i++) step(1);
+g.input.rmb = false;
+check('Einführung: jetzt greift der Partner an, zwei geblockte Hiebe reichen', T.i === 4, [T.i, T.count]);
+check('Einführung: der Spieler wird dabei nicht ernsthaft verletzt', P.state === 'active' && !P.dead && P.inj.blood > 0.8, P.inj.blood);
+T.event('block');
+check('Einführung: ein Ereignis aus einem anderen Schritt zählt nicht', T.i === 4 && T.count === 0);
+T.event('deflect');
+check('Einführung: eine Abwehr führt zum Todesstoß-Schritt mit mürbem Gegner', T.i === 5 && T.partner.postureMax <= 0.5, [T.i, T.partner.postureMax]);
+for (const x of [...g.npcs]) g.removeNpc(x);
+step(120);
+check('Einführung: verschwindet der Partner, kommt ein neuer', g.livingEnemies.length === 1 && T.partner === g.livingEnemies[0] && T.partner.postureMax <= 0.5);
+const h2 = g.progress.honor;
+g.callout('TODESSTOSS!', null, 'crit');
+check('Einführung: der Todesstoß schließt sie ab', T.finished && T.seen && A.done.has('tutor') && g.progress.honor === h2 + 30 + 20 && box.textContent.includes('Geschafft'), g.progress.honor - h2);
+step(300); g.input.locked = false; step(5);
+check('Einführung: danach geht es zurück ins Hauptmenü', g.mainMenu && visible($('overlay')) && !document.querySelector('#mode-cards [data-mode="tutorial"]').classList.contains('hot') && document.querySelector('#mode-cards [data-mode="tutorial"] .rec').textContent.includes('Abgeschlossen'), [g.mainMenu, g.started, g.input.locked, T.doneT, document.querySelector('#mode-cards [data-mode="tutorial"] .rec').textContent]);
+play('duel'); step(10);
+check('Einführung: außerhalb ist die Tafel weg und niemand ist mehr passiv', !visible(box) && g.training.drill === null);
+check('Am Ende ist alles an seinem Platz', sane() === '', sane());

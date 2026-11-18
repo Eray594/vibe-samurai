@@ -245,7 +245,8 @@ export class Perks {
   offer() {
     const pool = [...PERKS];
     this.options = [];
-    for (let i = 0; i < 3 && pool.length; i++) this.options.push(pool.splice(Math.floor(Math.random() * pool.length), 1)[0]);
+    const g = this.game, rnd = g.mode === 'daily' ? g.daily.rng(1000 + g.wave) : Math.random;      // the daily offers are the same for everyone
+    for (let i = 0; i < 3 && pool.length; i++) this.options.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
     this.ui.innerHTML = '<div class="head">Wähle eine Verbesserung</div>' + this.options.map((p, i) =>
       `<div class="card"><kbd>${i + 1}</kbd><b>${p.name}</b><span>${p.desc}</span></div>`).join('');
     this.ui.classList.add('show');

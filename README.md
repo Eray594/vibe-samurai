@@ -34,10 +34,10 @@ und Safari nutzen dieselben Web-Standards).
 
 ## So spielt man – in 60 Sekunden
 
-1. Spiel starten (siehe oben) und im **Hauptmenü einen Modus wählen**: *Überleben* (Wellen, die immer
-   härter werden) oder *Freies Spiel* (der Hof als Sandkasten). *Verteidigung* ist in Arbeit. Mit der
-   Wahl wird die Maus gefangen; `Esc` gibt sie wieder frei, z. B. für die Leiste oben. Der Knopf
-   **Hauptmenü** in der Leiste führt zurück zur Modus-Wahl.
+1. Spiel starten (siehe oben) und im **Hauptmenü einen Modus wählen** (siehe „Modi“ unten). Neu hier?
+   Dann zuerst die **Einführung**: sie führt in sechs Schritten durch Bewegen, Zuschlagen, Blocken,
+   Abwehr und Todesstoß. Mit der Wahl wird die Maus gefangen; `Esc` **pausiert** (Weiter, Neustart,
+   Hauptmenü) und gibt die Maus für die Leiste oben frei.
 2. Mit **WASD** bewegen, mit der **Maus** umsehen. `R` holt einen Gegner in den Hof, `Tab` erfasst ihn.
 3. **Linksklick** schlägt zu – mehrfach klicken ergibt eine Kombo, gedrückt halten einen schweren Hieb.
 4. **Rechtsklick** hält die Deckung. Wer sie erst im letzten Moment hebt, **wehrt ab**: die Klinge des
@@ -45,8 +45,61 @@ und Safari nutzen dieselben Web-Standards).
 5. Es gibt keinen Lebensbalken, sondern **Haltung**. Abwehren und Treffer brechen die Haltung des
    Gegners – erscheint der rote **斬**-Marker über ihm, beendet ein Linksklick den Kampf per Todesstoß.
 6. Selbst getroffen? `C` versorgt Wunden (3 Verbände), `Shift` weicht aus.
-7. Wenn das sitzt: mit `M` die Modi durchschalten (Duell → Gefecht → Überleben → Chaos), mit `1`–`6`
-   andere Waffen probieren. `H` blendet die Hilfe im Spiel ein und aus.
+7. Wenn das sitzt: im *Freien Spiel* mit `M` durch Duell → Gefecht → Chaos → 2 Spieler → Training
+   schalten, mit `1`–`6` andere Waffen probieren. `H` blendet die Hilfe im Spiel ein und aus.
+
+## Modi
+
+| Modus | Worum es geht |
+|---|---|
+| **Überleben** | Welle um Welle, immer härter. Nach jeder Welle wählst du eine von drei Verbesserungen. |
+| **Verteidigung** | Halte den Schrein in der Palisade. Siehe unten. |
+| **Tagesaufgabe** | Ein Überleben-Lauf, der an einem Tag für alle gleich ist: Waffe, Wetter, Gegner und angebotene Verbesserungen hängen nur am Datum. Eigener Tagesrekord. |
+| **Freies Spiel** | Der Hof als Sandkasten: Duell, Gefecht, Chaos, 2 Spieler, Training (`M` wechselt). Gegner und Verbündete lassen sich frei rufen. |
+| **Einführung** | Die geführte erste Runde. |
+
+Im Hauptmenü stehen außerdem die **Rekorde** auf den Karten, die **Schwierigkeit** (Leicht: Gegner
+treffen schwächer und greifen einzeln an, weniger Ehre · Schwer: umgekehrt, mehr Ehre) und die
+**Sprache** (Deutsch / English, wird sofort umgestellt).
+
+### Verteidigung
+
+In der Mitte steht ein **Schrein** hinter einer Palisade mit drei Zugängen: **Tor** (Norden),
+**Brücke** und **Mauerlücke**. Gegner kommen in Wellen durch diese Zugänge; ein Teil geht auf den
+Schrein, der Rest auf dich und deine Leute. Fällt der Schrein (oder du), ist der Lauf vorbei.
+
+Besiegte Gegner und abgewehrte Wellen bringen **Mon**. In der **Baupause** zwischen den Wellen kaufst
+du mit den Zifferntasten (oder per Klick); was du kaufst, landet einen Schritt vor dir:
+
+| Taste | Angebot | Preis | Wirkung |
+|---|---|---|---|
+| 1 | Speerträger | 40 | hält seine Stellung mit dem Speer |
+| 2 | Bogenschütze | 60 | schießt von seinem Platz aus |
+| 3 | Samurai | 100 | der stärkste Soldat |
+| 4 | Stachelgrube | 25 | verletzt die Beine von vier Gegnern |
+| 5 | Stolperdraht | 15 | reißt zwei Gegner zu Boden |
+| 6 | Ölfass | 35 | geht in Flammen auf, wenn ein Gegner herankommt (brennt auch dich) |
+| 7 | Barrikade | 30 | versperrt den Weg, bis sie zerhackt ist |
+| 8 | Schrein ausbessern | 30 | +40 Schreinpunkte |
+| 9 | Mauern verstärken | 60 | Schrein und Barrikaden halten mehr aus (bis Stufe 3) |
+| 0 | Wachturm | 120 | ein Schütze auf dem Turm (höchstens 2) |
+
+`Enter` (oder `R`) startet die Welle vorzeitig, `J` lässt die Soldaten dir folgen oder ihre Stellung
+halten. Höchstens 6 Soldaten und 14 Fallen. **Jede fünfte Welle** führt ein Anführer an: *Kuro der
+Brecher* geht auf den Schrein und trifft ihn fast dreimal so hart, *Hayate die Klinge* jagt dich,
+*Fürst Akuma* ruft immer wieder Verstärkung. Ein gefallener Anführer bringt 100 Mon.
+
+Die Festung steht im bestehenden Hof; die Hofmauer drumherum bleibt.
+
+### Erfolge
+
+21 Ziele (z. B. „10 Wellen in der Verteidigung“, „einen Pfeil aus der Luft schlagen“) geben einmalig
+Ehre. Stand und Liste stehen im Dōjō (`I`).
+
+### Handy und Tablet
+
+Auf Touch-Geräten erscheinen ein Stick (links) und Knöpfe (rechts); Wischen auf der rechten
+Bildhälfte dreht den Blick. Das reicht zum Spielen, ist aber ungenauer als Maus und Tastatur.
 
 Die vollständige Tastenbelegung:
 
@@ -81,13 +134,14 @@ Die vollständige Tastenbelegung:
 | 1–6 | Katana · Wakizashi · Nōdachi · Yari · Naginata · Kanabō |
 | K | Skin: Rōnin · Samurai · Weißer Kranich · Schatten · Oni |
 | R · T | Gegner spawnen · Verbündeten rufen |
-| M | Modus: Duell → Gefecht (immer +3) → **Überleben** → **Chaos** → **2 Spieler** → **Training** |
-| I | Menü: Einstellungen und Dōjō |
+| M | Freies Spiel: Duell → Gefecht (immer +3) → **Chaos** → **2 Spieler** → **Training** |
+| 1–0 · Enter · J | Verteidigung: kaufen · Welle starten · Soldaten folgen / halten |
+| I | Menü: Einstellungen, Dōjō und Erfolge |
 | O | Training: nächste Übung |
 | U | Wetter / Tageszeit: Abenddämmerung → Nacht → Regen → Schnee |
 | P | Wiederholung des Todesstoßes an/aus |
 | Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
-| Backspace | Hof zurücksetzen · Esc gibt die Maus für die Leiste oben frei |
+| Backspace · Esc | Hof zurücksetzen · Pause (gibt die Maus für die Leiste oben frei) |
 
 ## Training
 
@@ -202,14 +256,29 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 ## Tests
 
 ```bash
-node tests/run.mjs
+node tests/run.mjs                # alles (rund 3 Minuten)
+node tests/run.mjs defense fuzz   # nur Suiten, deren Name eines dieser Wörter enthält
+node tests/run.mjs --list         # welche Suiten es gibt
+SEED=7 node tests/run.mjs fuzz    # Zufallstest mit anderem Startwert
 ```
 
-Startet das Spiel in einem unsichtbaren Chrome, treibt die Spielschleife mit festen 60 Hz an und
-prüft rund 70 Dinge: ob das Spiel überhaupt startet, Bewegung, Konter, Gegnertypen, Wetter, Feuer,
-alle Modi – und dass die Browser-Konsole fehlerfrei bleibt. Braucht Node 22+ und Chrome, sonst
-nichts. Dieselben Tests laufen bei jedem Push auf GitHub (`.github/workflows/deploy.yml`); schlagen
-sie fehl, wird nicht veröffentlicht.
+Startet das Spiel in einem unsichtbaren Chrome und treibt die Spielschleife mit festen 60 Hz von
+Hand an. Jede Suite (`tests/suites/*.js`) läuft auf einer frisch geladenen Seite mit leerem Speicher;
+`tests/prelude.js` stellt allen dieselben Helfer bereit.
+
+| Suite | Prüft |
+|---|---|
+| `10-core` | Bewegung, Konter, Gegnertypen, Wetter, Feuer, Sandkasten-Modi |
+| `20-menu` | Hauptmenü, Rekorde, Schwierigkeit, Pause |
+| `30-defense` | Festung, Shop, Soldaten, Fallen, Türme, Wellen, Anführer, Niederlage, Aufräumen |
+| `40-goals` | Erfolge, Tagesaufgabe, Einführung |
+| `50-language-touch` | Englisch (auch: nirgends bleibt deutscher Text stehen), Touch-Steuerung |
+| `51-english-start` | Gespeicherte Sprache, Schwierigkeit und Rekorde beim Laden |
+| `90-fuzz` | Zufallseingaben in jedem Modus: keine Ausnahme, niemand verlässt den Hof, keine NaN, nichts bleibt zurück |
+
+Jede Suite schlägt außerdem fehl, wenn in der Browser-Konsole ein Fehler erscheint. Braucht Node 22+
+und Chrome, sonst nichts. Dieselben Tests laufen bei jedem Push auf GitHub
+(`.github/workflows/deploy.yml`); schlagen sie fehl, wird nicht veröffentlicht.
 
 ## Aufbau (`src/`)
 
@@ -231,6 +300,10 @@ sie fehl, wird nicht veröffentlicht.
 | `mount.js` | Pferd für berittene Gegner |
 | `extras.js` | Klingenbindung, Duell-Eröffnung, Verbesserungen, Wiederholung, 2-Spieler-Modus |
 | `meta.js` | Einstellungen, Ehre und Dōjō, Menü, Trainingsübungen |
+| `defense.js` | Verteidigung: Festung, Schrein, Wellen und Anführer, Geld und Shop, Soldaten, Fallen, Türme, Wegfindung durch die Tore |
+| `goals.js` | Schwierigkeitsgrade, Erfolge, Tagesaufgabe, Einführung |
+| `front.js` | Hauptmenü (Rekorde, Schwierigkeit, Sprache), Pause, Touch-Steuerung |
+| `i18n.js` / `lang-en.js` | Englisch: übersetzt jeden Text, sobald er auf der Seite erscheint / das Wörterbuch dazu |
 | `perf.js` | Automatische Grafikqualität, Zusammenfassen statischer Geometrie |
 | `physics.js` | Welt, Kollisionsgruppen, Mathe-Helfer |
 

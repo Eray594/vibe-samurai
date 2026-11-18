@@ -119,7 +119,7 @@ export const ALLY_STYLE = {
 export const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 /** Weighted random opponent kind; tougher kinds show up as `difficulty` (0..1) rises. */
-export function randomType(difficulty = 0.3) {
+export function randomType(difficulty = 0.3, rnd = Math.random) {
   const w = {
     ashigaru: 1.0,
     ronin: 0.7 + difficulty * 0.4,
@@ -132,7 +132,7 @@ export function randomType(difficulty = 0.3) {
   };
   let total = 0;
   for (const k in w) total += w[k];
-  let r = Math.random() * total;
+  let r = rnd() * total;
   for (const k in w) { r -= w[k]; if (r <= 0) return k; }
   return 'ashigaru';
 }

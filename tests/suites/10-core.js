@@ -1,43 +1,5 @@
-// Runs inside the page (body of an async function). Drives the game loop by hand at a fixed
-// 60 Hz with rendering switched off, so thousands of frames take a few seconds and the result
-// does not depend on how fast the machine is. Returns [[name, ok, detail], ...].
-const g = window.game;
-const checks = window.__checks = [];
-const check = (name, ok, detail) => checks.push([name, !!ok, detail === undefined ? '' : typeof detail === 'string' ? detail : JSON.stringify(detail)]);
-g.renderer.setAnimationLoop(null);
-g.clock.getDelta = () => 1 / 60;
-const realRender = g.composer.render.bind(g.composer);
-g.composer.render = () => {};
-// --- Hauptmenü (vor allem anderen: so sieht es der Spieler beim Laden) ---
-{
-  const ov = document.getElementById('overlay'), cards = [...document.querySelectorAll('#mode-cards .mode-card')];
-  const card = (m) => cards.find((c) => c.dataset.mode === m);
-  check('Hauptmenü ist beim Laden sichtbar', !ov.classList.contains('hidden') && g.mainMenu);
-  check('Hauptmenü bietet Überleben, Verteidigung und Freies Spiel', card('survival') && card('defense') && card('duel'), cards.map((c) => c.dataset.mode));
-  check('Verteidigung ist noch gesperrt', card('defense').disabled);
-  const t0 = g.time; for (let i = 0; i < 30; i++) g.frame();
-  check('Hinter dem Hauptmenü steht der Hof still', g.time === t0, [t0, g.time]);
-  card('defense').click();
-  check('Klick auf gesperrten Modus tut nichts', !ov.classList.contains('hidden') && g.mode === 'duel', g.mode);
-  card('survival').click();
-  check('Klick auf Überleben startet Überleben', g.mode === 'survival' && ov.classList.contains('hidden') && g.wave === 1, [g.mode, g.wave]);
-  g.input.locked = true; g.started = true; for (let i = 0; i < 30; i++) g.frame();
-  check('Nach der Wahl läuft das Spiel', g.time > t0, g.time);
-  document.getElementById('btn-main').click(); g.input.locked = false;
-  check('Hauptmenü-Knopf führt zurück zur Modus-Wahl', !ov.classList.contains('hidden') && g.mainMenu);
-  card('duel').click();
-  check('Freies Spiel startet im Duell', g.mode === 'duel' && ov.classList.contains('hidden'), g.mode);
-}
-g.input.locked = true; g.started = true;
-try { localStorage.clear(); } catch { /* no storage */ }
-g.progress.wipe();
-const step = (n = 1) => { for (let i = 0; i < n; i++) g.frame(); };
-const press = (c) => g.input.pressed.add(c);
-const P = g.player, ctl = g.ctl, K = g.input.keys;
-const V = (x, y, z) => P.getPos().set(x, y, z);
-const solo = (type, pos) => { for (const e of [...g.npcs]) g.removeNpc(e); return type ? g.spawnFighter(1, type, pos) : null; };
-const dummy = (type, pos) => { const e = solo(type, pos); e.brain.update = () => {}; return e; };
-const fresh = (x = 0, z = 4, yaw = 0) => { K.clear(); g.input.lmb = g.input.rmb = false; P.resetTo(V(x, 0, z), 0); ctl.reset(); ctl.setStance(1); ctl.yaw = yaw; ctl.faceYaw = yaw; g.perfectCd = 0; step(5); };
+// The fighting itself: movement, counters, opponents, weather, fire, the sandbox modes.
+begin();
 const feet = () => +(P.core.position.y - 0.98).toFixed(2);
 
 // ---------------------------------------------------------------- basics
@@ -186,7 +148,9 @@ for (let i = 0; i < 7; i++) {
 check('Training: Stoß-Übung macht nur Stöße', drills.includes('thrust:tsuki'), drills.join(' '));
 check('Training: Feger-Übung macht nur Feger', drills.includes('sweep:ashi'), drills.join(' '));
 check('Training: stillstehender Partner greift nicht an', drills.includes('passive:'), drills.join(' '));
-check('Training: Spieler überlebt alle Übungen', P.state === 'active' && !P.dead, P.state);
+// he may just have been knocked over (that is part of it) – but he is not dead and gets up again
+for (let f = 0; f < 900 && P.state !== 'active' && !P.dead; f++) g.frame();
+check('Training: Spieler überlebt alle Übungen', P.state === 'active' && !P.dead, [P.state, P.dead, P.inj.cause]);
 
 g.setMode('versus'); step(20); const Q = g.versus.p2;
 check('2 Spieler: Spieler 2 ist da', !!Q && g.npcs.length === 1);
@@ -213,4 +177,23 @@ g.composer.render = realRender; step(5);
 g.renderer.info.autoReset = false; g.renderer.info.reset(); g.frame();
 const info = { ...g.renderer.info.render }; g.renderer.info.autoReset = true;
 check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000, [info.calls, info.triangles]);
-return checks;
+
+// ---- every weapon has a cut for every situation (a missing one used to crash the game mid-fight)
+{
+  const { MOVESETS, ATTACKS } = await import('/src/combat.js');
+  const { WEAPON_ORDER } = await import('/src/weapons.js');
+  const missing = [];
+  for (const w of WEAPON_ORDER) {
+    const ms = MOVESETS[w];
+    for (const name of [...(ms?.combo || [undefined]), ms?.sprint, ms?.air, ms?.counter, ...(ms?.ai || [undefined])]) if (!ATTACKS[name]) missing.push(`${w}: ${name}`);
+  }
+  check('Jede Waffe hat für jede Lage einen Hieb (Kombo, Sprint, Luft, Konter, KI)', missing.length === 0, missing);
+  g.setMode('duel'); g.standoff.cancel();
+  let bad = '';
+  for (const w of WEAPON_ORDER) {
+    const e = dummy('ronin', V(0, 0, -1.6)); fresh(0, 0); g.setPlayerWeapon(w); ctl.lock = e;
+    try { ctl.counterT = 0.7; g.input.lmb = true; g.input.lmbPressed = true; step(3); g.input.lmb = false; step(90); } catch (err) { bad = bad || `${w}: ${err.message}`; }
+  }
+  g.setPlayerWeapon('katana');
+  check('Konter direkt nach einer Abwehr geht mit jeder Waffe', bad === '', bad);
+}

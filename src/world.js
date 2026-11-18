@@ -41,6 +41,7 @@ export class Weather {
   }
 
   get name() { return PRESETS[this.key].name; }
+  nameOf(key) { return PRESETS[key]?.name ?? key; }
   get raining() { return this.key === 'rain'; }
 
   next() { this.set(WEATHER_ORDER[(WEATHER_ORDER.indexOf(this.key) + 1) % WEATHER_ORDER.length]); }

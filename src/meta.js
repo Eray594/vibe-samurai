@@ -1,5 +1,6 @@
 // What frames the fighting: settings, lasting progress (honour) and the training drills.
 import { SKINS, SKIN_ORDER } from './roster.js';
+import { GOALS } from './goals.js';
 
 const load = (key, def) => { try { return { ...def, ...JSON.parse(localStorage.getItem(key) || '{}') }; } catch { return { ...def }; } };
 const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* no storage: lasts for this visit only */ } };
@@ -8,11 +9,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, diff: 'normal', lang: 'de' }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, diff: this.diff, lang: this.lang });
     this.apply();
   }
   apply() {
@@ -60,9 +61,10 @@ export class Progress {
   store() { save('vibesamurai.save', { honor: this.honor, total: this.total, owned: [...this.owned] }); }
 
   /** Honour for a deed. Nothing is earned in training or against a friend. */
-  earn(n) {
+  earn(n, exact = false) {
     const g = this.game;
-    if (n <= 0 || g.mode === 'training' || g.mode === 'versus') return;
+    if (n <= 0 || g.mode === 'training' || g.mode === 'versus' || g.mode === 'tutorial') { if (!exact || n <= 0) return; }
+    if (!exact) n = Math.max(1, Math.round(n * g.diff.honor));
     const before = this.rank;
     this.honor += n; this.total += n;
     this.store();
@@ -84,6 +86,7 @@ export class Progress {
   wipe() {
     this.honor = 0; this.total = 0; this.owned.clear();
     this.store();
+    this.game.ach?.wipe();
     if (SKINS[this.game.skin]?.locked) this.game.setPlayerSkin('ronin');
     this.game.perks.reset();
   }
@@ -107,6 +110,8 @@ export class Menu {
         <h2>Dōjō <span id="shop-honor"></span></h2>
         <p class="hint">Ehre gibt es für jeden Besiegten und jede überstandene Welle. Was du hier nimmst, bleibt.</p>
         <div id="shop"></div>
+        <h2>Erfolge <span id="goal-count"></span></h2>
+        <div id="goals"></div>
         <div class="row"><button id="menu-wipe">Fortschritt löschen</button><button id="menu-close">Schließen</button></div>
       </div>`;
     document.body.appendChild(el);
@@ -147,6 +152,11 @@ export class Menu {
   refresh() {
     const P = this.game.progress;
     this.el.querySelector('#shop-honor').textContent = `· ${P.honor} Ehre · Rang ${P.rank}`;
+    const A = this.game.ach;
+    if (A) {
+      this.el.querySelector('#goal-count').textContent = `· ${A.done.size} / ${GOALS.length}`;
+      this.el.querySelector('#goals').innerHTML = A.html();
+    }
     this.el.querySelector('#shop').innerHTML = SHOP.map((it) => {
       const own = P.has(it.key);
       return `<div class="item${own ? ' own' : ''}"><div><b>${it.name}</b><span>${it.desc}</span></div>`
@@ -177,7 +187,7 @@ export class Training {
     document.body.appendChild(el);
   }
   get active() { return this.game.mode === 'training'; }
-  get drill() { return this.active ? DRILLS[this.i].key : null; }
+  get drill() { return this.active ? DRILLS[this.i].key : this.game.tutorial?.drill ?? null; }
 
   show() {
     const d = DRILLS[this.i];

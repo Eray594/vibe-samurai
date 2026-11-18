@@ -7,6 +7,8 @@ const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
 const _h = new THREE.Vector3();
 const _me = new THREE.Vector3();
+const _a = new THREE.Vector3();
+const _r = new THREE.Vector3();
 const ARENA_KEEP = 12;
 const ATTACK_THRUST = new Set(['tsuki', 'tsukiLow']);
 
@@ -42,6 +44,10 @@ export class Brain {
     this.pushT = 0;
     this.climbCd = 0;
     this.climbing = false;
+    this.post = null;           // hired soldiers: the spot to hold ...
+    this.leash = 6;             // ... how far from it they will go for someone ...
+    this.follow = false;        // ... or whether they stay at the player's side instead
+    this.raider = false;        // defense: goes for the shrine rather than for people
   }
 
   get attacking() { return this.runner.threatening; }
@@ -68,15 +74,22 @@ export class Brain {
     this.blockSkill = Math.min(0.85, this.blockSkill + 0.04);
   }
 
+  /** Where a hired soldier belongs: at his post, or at the player's side. */
+  anchor() { return this.post ? (this.follow ? this.game.player.getPos(_a) : this.post) : null; }
+
   pickTarget() {
     const me = this.k.getPos(_me);
+    const anchor = this.anchor(), leash = this.follow ? Math.min(this.leash, 7) : this.leash;
     let best = null, bd = Infinity;
     for (const f of this.game.fighters) {
       if (f.team === this.k.team || f.state !== 'active' || f.dead || f.disposed) continue;
       const p = f.getPos(_w);
+      if (anchor && Math.hypot(p.x - anchor.x, p.z - anchor.z) > leash) continue;       // not his to chase
       const d = Math.hypot(p.x - me.x, p.z - me.z) * (f === this.target ? 0.8 : 1);   // a little loyalty to the current target
       if (d < bd) { bd = d; best = f; }
     }
+    const def = this.game.defense;
+    if (def?.active && this.k.team === 1) return def.chooseTarget(this, best, bd, me);
     return best;
   }
 
@@ -185,6 +198,16 @@ export class Brain {
     // ---------- nobody left to fight
     if (!tgt) {
       it.move.set(0, 0, 0);
+      const home = this.anchor();
+      if (home && k.mountH <= 0) {
+        // back to the post (or to the player's heel)
+        const hx = home.x - me.x, hz = home.z - me.z, hd = Math.hypot(hx, hz);
+        if (hd > (this.follow ? 2.6 : 0.6)) {
+          const sp = Math.min(4 * def.moveMul, hd * 2 + 0.6);
+          this.steer((hx / hd) * sp, (hz / hd) * sp, me, home);
+          it.yaw = angleLerp(it.yaw, Math.atan2(-it.move.x, -it.move.z), dampFactor(5, dt));
+        }
+      }
       if (this.runner.busy) this.runner.update(dt, it);
       else { it.mode = 'guard'; this.runner.rest(dt, it, guardFor(def)); }
       k.attackPhase = this.runner.phase;
@@ -230,7 +253,7 @@ export class Brain {
       fwd = speed; side = 0;
       if (!k.airborne && this.climbCd <= 0 && k.staggerT <= 0 && game.wallNear(k, 1.15)?.top) { if (k.jump(1.2)) { this.climbCd = 1.6; game.onJump(k); } }
     }
-    this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me);
+    this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me, tp);
     if (game.training?.drill === 'passive') { this.cooldown = 1; this.threatSeen = true; this.kickCd = 5; }
 
     // ---------- reading the opponent: evade, guard or (rarely) deflect
@@ -282,8 +305,8 @@ export class Brain {
       const spin = spinYaw(this.runner.a, k);
       if (spin != null) it.yaw = spin;
       const ev = this.runner.update(dt, it);
-      if (ev === 'strike') game.onSwing(k);
-      if (ev === 'recover' && game.checkWhiff(k, this.runner.a, null)) { this.comboLeft = 0; this.recoilT = Math.max(this.recoilT, 0.55); }
+      if (ev === 'strike') { game.onSwing(k); if (tgt.isStructure && dist < ideal + 1.1) game.defense.hitStructure(tgt, k, !!this.runner.a?.unblockable); }
+      if (ev === 'recover' && !tgt.isStructure && game.checkWhiff(k, this.runner.a, null)) { this.comboLeft = 0; this.recoilT = Math.max(this.recoilT, 0.55); }
       if (ev === 'recover' && this.comboLeft > 0 && canAttack && dist < ideal + 0.9) this.startAttack(false, vit);
       else if (ev === 'done') this.cooldown = rand(0.5, 1.6) / this.aggr;
     } else {
@@ -298,8 +321,17 @@ export class Brain {
   }
 
   /** Move intent with room kept between comrades and the wall. */
-  steer(mx, mz, me) {
+  steer(mx, mz, me, goal) {
     const k = this.k;
+    // defense: the palisade is in the way, so head for a gate instead
+    const fort = this.game.defense;
+    if (goal && fort?.active) {
+      const sp = Math.hypot(mx, mz);
+      if (sp > 0.5 && mx * (goal.x - me.x) + mz * (goal.z - me.z) > 0) {
+        const dir = fort.route(me, goal, _r);
+        if (dir) { mx = dir.x * sp; mz = dir.z * sp; }
+      }
+    }
     for (const o of this.game.fighters) {
       if (o === k || o.team !== k.team || o.state !== 'active') continue;
       const op = o.core.position;
@@ -319,6 +351,16 @@ export class Brain {
   shootUpdate(dt, tgt, dist, fx, fz, me, vit) {
     const k = this.k, it = k.intent, gun = this.type.ranged === 'gun';
     if (dist < 3.2 && k.aimT <= 0) return false;
+    const fort = this.game.defense, holds = this.post && !this.follow;       // a hired archer shoots from where he was put
+    // defense: no shooting through the palisade; come in (or out) through a gate first
+    if (fort?.active && k.aimT <= 0 && !holds && (Math.hypot(me.x, me.z) < 6.2) !== (Math.hypot(tgt.core.position.x, tgt.core.position.z) < 6.2)) {
+      this.runner.cancel(); this.blockT = 0; k.attackPhase = null; k.atk = null;
+      it.mode = 'guard';
+      this.runner.rest(dt, it, POSES.carry, 6);
+      const sp = 3.6 * this.aggr;
+      this.steer(fx * sp, fz * sp, me, tgt.core.position);
+      return true;
+    }
     this.runner.cancel();
     this.blockT = 0;
     k.attackPhase = null; k.atk = null;
@@ -340,7 +382,10 @@ export class Brain {
         if (k.aimT <= lockAt) this.aimLocked = true;
       }
       if (k.aimT <= 0 || dist < 2.2) {
-        if (k.aimT <= 0) { if (gun) this.game.fireGun(k, this.aimPoint); else this.game.fireArrow(k, this.aimPoint); }
+        if (k.aimT <= 0) {
+          if (gun) this.game.fireGun(k, this.aimPoint); else this.game.fireArrow(k, this.aimPoint);
+          if (tgt.isStructure) this.game.defense.hitStructure(tgt, k, false, gun ? 1.5 : 0.75);
+        }
         k.aimT = 0;
         this.tele = null;
         this.shotCd = (gun ? rand(5, 7.5) : rand(2.4, 4)) / this.aggr;
@@ -351,6 +396,7 @@ export class Brain {
     if (dist < 7) fwd = -speed * 0.85;
     else if (dist > 12.5) fwd = speed * 0.8;
     else side = 1.1 * this.strafe;
+    if (holds) { fwd = 0; side = 0; }
     this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me);
     this.shotCd -= dt * (0.5 + 0.5 * vit);
     if (this.shotCd <= 0 && dist < 17 && k.staggerT <= 0) {

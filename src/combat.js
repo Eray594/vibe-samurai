@@ -62,7 +62,7 @@ export const MOVESETS = {
   katana: { combo: ['kesaR', 'kesaL', 'yokoR', 'spin', 'age', 'shomen'], sprint: 'nuki', air: 'shomen', counter: 'kesaL', ai: ['kesaR', 'kesaL', 'shomen', 'tsuki', 'ashi', 'yokoR', 'age', 'spin'] },
   wakizashi: { combo: ['kesaR', 'kesaL', 'tsuki', 'yokoL', 'spin', 'kesaR'], sprint: 'nuki', air: 'shomen', counter: 'tsuki', ai: ['kesaR', 'kesaL', 'tsuki', 'yokoL', 'ashi'] },
   nodachi: { combo: ['kesaR', 'yokoL', 'spin', 'shomen'], sprint: 'nuki', air: 'shomen', counter: 'age', ai: ['kesaR', 'kesaL', 'shomen', 'yokoR', 'ashi', 'spin'] },
-  yari: { combo: ['tsuki', 'tsukiLow', 'tsuki', 'yokoR'], sprint: 'tsuki', air: 'tsukiLow', ai: ['tsuki', 'tsuki', 'tsukiLow', 'yokoR'] },
+  yari: { combo: ['tsuki', 'tsukiLow', 'tsuki', 'yokoR'], sprint: 'tsuki', air: 'tsukiLow', counter: 'tsuki', ai: ['tsuki', 'tsuki', 'tsukiLow', 'yokoR'] },
   naginata: { combo: ['yokoR', 'yokoL', 'spin', 'ashi', 'shomen'], sprint: 'tsuki', air: 'shomen', counter: 'yokoL', ai: ['yokoR', 'yokoL', 'kesaR', 'ashi', 'shomen', 'tsuki', 'spin'] },
   kanabo: { combo: ['kesaR', 'kesaL', 'spin', 'shomen'], sprint: 'yokoR', air: 'shomen', counter: 'kesaL', ai: ['kesaR', 'shomen', 'shomen', 'kesaL', 'yokoR'] },
 };

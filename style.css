@@ -168,10 +168,10 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 #overlay p { line-height: 1.6; }
 #overlay p b { color: var(--gold); font-weight: normal; }
 #overlay .hint { font-size: 12px; color: var(--muted); }
-#overlay .card { max-width: 760px; }
-#mode-cards { display: flex; gap: 12px; margin: 6px 0 16px; }
+#overlay .card { max-width: 1000px; max-height: 96vh; overflow-y: auto; }
+#mode-cards { display: flex; gap: 10px; margin: 6px 0 14px; flex-wrap: wrap; justify-content: center; }
 .mode-card {
-  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 12px 14px;
+  flex: 1 1 160px; max-width: 220px; display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 14px 10px 12px;
   text-align: center; border-top: 3px solid var(--blood); position: relative; cursor: pointer;
 }
 .mode-card i { font-style: normal; font-family: var(--mincho); font-size: 34px; color: var(--gold); line-height: 1; }
@@ -245,6 +245,7 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
   width: 210px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--edge); border-top: 2px solid var(--blood);
   border-radius: 4px; display: flex; flex-direction: column; gap: 5px;
 }
+#perks .card { pointer-events: auto; cursor: pointer; }
 #perks .card kbd { align-self: flex-start; margin: 0; font-size: 13px; padding: 2px 8px; }
 #perks .card b { font-size: 16px; letter-spacing: 1px; }
 #perks .card span { font-size: 13px; color: var(--muted); line-height: 1.35; }
@@ -298,3 +299,100 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 #stamina .track { height: 4px; background: rgba(0,0,0,0.6); border: 1px solid rgba(190,150,96,0.25); }
 #stamina i { display: block; height: 100%; width: 100%; background: #8fc7a0; transition: width .08s linear; }
 #stamina.out i { background: #c8503c; }
+
+/* ---- main menu: records, difficulty, language */
+.mode-card .rec { margin-top: auto; font-size: 11.5px; color: var(--gold); line-height: 1.35; min-height: 15px; }
+.mode-card.hot { border-color: var(--gold); box-shadow: 0 0 14px rgba(214,166,86,0.35); }
+.menu-row { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 6px 0; flex-wrap: wrap; }
+.menu-row > span { letter-spacing: 3px; text-transform: uppercase; font-size: 12px; color: var(--muted); margin-right: 4px; }
+.menu-row em { font-style: normal; font-size: 12px; color: var(--muted); margin-left: 6px; }
+#btn-main-settings { margin: 0 0 0 18px; }
+body:not(.sandbox) .sandbox-only { display: none; }
+
+/* ---- pause */
+#pause { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,3,4,0.55); z-index: 4; pointer-events: none; }
+#pause.show { display: flex; }
+#pause .card {
+  pointer-events: auto; display: flex; flex-direction: column; gap: 8px; min-width: 250px; padding: 18px 24px; text-align: center;
+  background: #141011; border: 1px solid var(--edge); border-top: 3px solid var(--blood); border-radius: 4px;
+}
+#pause h2 { margin: 0 0 6px; letter-spacing: 8px; font-weight: normal; color: var(--gold); text-transform: uppercase; font-size: 18px; }
+#pause button { font-size: 15px; padding: 9px 14px; }
+#pause .hint { font-size: 11.5px; color: var(--muted); margin: 4px 0 0; max-width: 240px; }
+
+/* ---- defense: shrine bar, money, shop */
+#def-hud {
+  position: fixed; left: 50%; top: 108px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 4px;
+  pointer-events: none; text-shadow: 0 0 6px #000;
+}
+#def-hud.show { display: flex; }
+#def-hud .row { display: flex; align-items: center; gap: 8px; font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+#def-hud .track { width: 260px; height: 9px; background: rgba(0,0,0,0.6); border: 1px solid var(--edge); }
+#def-hud .track i { display: block; height: 100%; width: 100%; background: var(--gold); transition: width .15s linear; }
+#def-hud.low .track i { background: var(--blood); }
+#def-hud b { font-weight: normal; color: var(--gold); min-width: 70px; }
+#def-hud .info { font-size: 13px; color: var(--ink); }
+#def-shop {
+  position: fixed; right: 16px; top: 110px; width: 318px; display: none; flex-direction: column; gap: 3px; padding: 9px 10px;
+  background: var(--panel); border: 1px solid var(--edge); border-top: 2px solid var(--gold); border-radius: 4px; z-index: 6;
+  max-height: calc(100vh - 130px); overflow-y: auto;
+}
+#def-shop.show { display: flex; }
+#def-shop .head { letter-spacing: 3px; text-transform: uppercase; font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+#def-shop .head b { color: var(--gold); font-weight: normal; letter-spacing: 1px; font-size: 14px; }
+#def-shop .it { display: flex; align-items: center; gap: 8px; text-align: left; padding: 4px 7px; }
+#def-shop .it kbd { margin: 0; font-size: 12px; padding: 2px 6px; }
+#def-shop .it div { flex: 1; display: flex; flex-direction: column; }
+#def-shop .it b { font-weight: normal; font-size: 13.5px; }
+#def-shop .it span { font-size: 11px; color: var(--muted); line-height: 1.25; }
+#def-shop .it em { font-style: normal; color: var(--gold); font-size: 13px; }
+#def-shop .it.no { opacity: 0.45; }
+#def-shop .foot { font-size: 11px; color: var(--muted); margin-top: 3px; }
+#def-shop .go { margin-top: 4px; border-color: var(--blood); font-size: 14px; }
+
+/* ---- the guided first round uses the look of the training drill */
+.drillbox {
+  position: fixed; left: 18px; top: 112px; width: 340px; padding: 10px 12px; display: none; flex-direction: column; gap: 4px;
+  background: var(--panel); border: 1px solid var(--edge); border-left: 2px solid var(--gold); border-radius: 4px; pointer-events: none; z-index: 3;
+}
+.drillbox.show { display: flex; }
+.drillbox small { letter-spacing: 3px; font-size: 10px; color: var(--muted); }
+.drillbox > b { font-size: 17px; letter-spacing: 1px; color: var(--gold); }
+.drillbox span b { color: var(--gold); }
+.drillbox span { font-size: 13.5px; line-height: 1.4; }
+.drillbox i { font-style: normal; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ---- achievements (in the dōjō) */
+#goals { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+#goals .goal { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border: 1px solid rgba(190,150,96,0.16); border-radius: 3px; opacity: 0.62; }
+#goals .goal.done { opacity: 1; border-color: var(--gold); }
+#goals .goal b { font-weight: normal; font-size: 13.5px; }
+#goals .goal.done b { color: var(--gold); }
+#goals .goal span { font-size: 11.5px; color: var(--muted); line-height: 1.3; }
+#goals .goal em { font-style: normal; font-size: 11px; color: var(--muted); }
+
+/* ---- touch controls */
+#touch { position: fixed; inset: 0; display: none; touch-action: none; z-index: 2; }
+body.touch #touch { display: block; }
+#touch .look { position: absolute; inset: 0 0 0 38%; }
+#touch .stick {
+  position: absolute; left: 26px; bottom: 26px; width: 132px; height: 132px; border-radius: 50%;
+  background: rgba(12,10,10,0.35); border: 1px solid var(--edge); touch-action: none;
+}
+#touch .stick i { position: absolute; left: 50%; top: 50%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; background: rgba(214,166,86,0.5); pointer-events: none; }
+#touch .btns { position: absolute; right: 14px; bottom: 18px; width: 236px; display: flex; flex-wrap: wrap-reverse; gap: 8px; justify-content: flex-end; }
+#touch .btns button {
+  width: 72px; height: 54px; border-radius: 10px; font-size: 13px; padding: 0; background: rgba(20,16,15,0.6); touch-action: none;
+}
+#touch .btns button.big { width: 152px; height: 64px; font-size: 17px; border-color: var(--blood); }
+#touch .btns button.on { background: rgba(120,40,30,0.75); border-color: var(--gold); }
+#touch .pause { position: absolute; right: 14px; top: 70px; width: 44px; height: 40px; font-weight: bold; }
+body.touch #help { display: none; }
+body.touch #player-panel { transform: scale(0.8); transform-origin: left bottom; bottom: 170px; }
+@media (max-width: 760px) {
+  #topbar { transform: scale(0.72); transform-origin: top center; }
+  #def-shop { width: 250px; right: 6px; }
+  #posture, #stamina { width: 200px; }
+}
+body.shopping #help { display: none; }
+body.touch #score { left: 180px; bottom: 26px; }

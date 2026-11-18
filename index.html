@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>VIBE SAMURAI – Samurai-Sandbox</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="style.css">
@@ -24,10 +24,10 @@
 <div id="topbar">
   <div class="logo"><i>侍</i>VIBE<span>SAMURAI</span></div>
   <div class="group">
-    <button id="btn-spawn" title="Gegner spawnen (R)">Gegner <kbd>R</kbd></button>
-    <select id="enemy-type" title="Gegnertyp"></select>
-    <button id="btn-ally" title="Verbündeten rufen (T)">Verbündeter <kbd>T</kbd></button>
-    <button id="btn-mode" title="Modus wechseln (M)"><b id="mode-label">Duell</b> <kbd>M</kbd></button>
+    <button id="btn-spawn" class="sandbox-only" title="Gegner spawnen (R)">Gegner <kbd>R</kbd></button>
+    <select id="enemy-type" class="sandbox-only" title="Gegnertyp"></select>
+    <button id="btn-ally" class="sandbox-only" title="Verbündeten rufen (T)">Verbündeter <kbd>T</kbd></button>
+    <button id="btn-mode" class="sandbox-only" title="Modus wechseln (M)"><b id="mode-label">Duell</b> <kbd>M</kbd></button>
   </div>
   <div class="group" id="weapon-buttons"></div>
   <div class="group">
@@ -87,9 +87,10 @@
     <div><kbd>Q</kbd> Kunai · <kbd>C</kbd> Wunden versorgen · <kbd>E</kbd> aufheben</div>
     <div><kbd>V</kbd> Freie Klinge (Maus führt das Schwert)</div>
     <div><kbd>1-6</kbd> Waffe · <kbd>K</kbd> Skin · <kbd>R</kbd> Gegner · <kbd>T</kbd> Verbündeter</div>
-    <div><kbd>M</kbd> Modus · <kbd>U</kbd> Wetter · <kbd>Z</kbd> Zeitlupe · <kbd>P</kbd> Wiederholung · <kbd>N</kbd> Musik · <kbd>⌫</kbd> Reset</div>
+    <div>Verteidigung: <kbd>1</kbd>–<kbd>0</kbd> kaufen · <kbd>Enter</kbd> Welle starten · <kbd>J</kbd> Soldaten folgen / halten</div>
+    <div><kbd>M</kbd> Modus (Freies Spiel) · <kbd>U</kbd> Wetter · <kbd>Z</kbd> Zeitlupe · <kbd>P</kbd> Wiederholung · <kbd>N</kbd> Musik · <kbd>⌫</kbd> Reset</div>
     <div><kbd>I</kbd> Einstellungen &amp; Dōjō · <kbd>O</kbd> nächste Übung (Training)</div>
-    <div><kbd>Esc</kbd> Maus freigeben (für die Leiste oben)</div>
+    <div><kbd>Esc</kbd> Pause (Maus frei für die Leiste oben)</div>
   </div>
 </div>
 <div id="labels"></div>
@@ -106,19 +107,50 @@
     <div id="mode-cards">
       <button class="mode-card" data-mode="survival">
         <i>生</i><b>Überleben</b>
-        <span>Welle um Welle, immer härter. Zwischen den Wellen wählst du Verbesserungen. Wie weit kommst du?</span>
+        <span>Welle um Welle, immer härter. Zwischen den Wellen wählst du Verbesserungen.</span>
+        <small class="rec"></small>
       </button>
-      <button class="mode-card soon" data-mode="defense" disabled>
-        <i>守</i><b>Verteidigung</b><em>in Arbeit</em>
-        <span>Halte deine Stellung: Mit verdientem Geld Soldaten anheuern und Fallen bauen, bevor die nächste Welle kommt.</span>
+      <button class="mode-card" data-mode="defense">
+        <i>守</i><b>Verteidigung</b>
+        <span>Halte den Schrein. Verdientes Geld kauft Soldaten, Fallen und Türme für die nächste Welle.</span>
+        <small class="rec"></small>
+      </button>
+      <button class="mode-card" data-mode="daily">
+        <i>日</i><b>Tagesaufgabe</b>
+        <span>Jeden Tag ein fester Lauf: gleiche Waffe, gleiches Wetter, gleiche Gegner für alle.</span>
+        <small class="rec"></small>
       </button>
       <button class="mode-card" data-mode="duel">
         <i>道</i><b>Freies Spiel</b>
         <span>Der Hof als Sandkasten: Duell, Gefecht, Chaos, 2 Spieler und Training – mit <kbd>M</kbd> wechseln.</span>
+        <small class="rec"></small>
+      </button>
+      <button class="mode-card" data-mode="tutorial">
+        <i>初</i><b>Einführung</b>
+        <span>Die erste Runde, Schritt für Schritt: bewegen, zuschlagen, blocken, Abwehr, Todesstoß.</span>
+        <small class="rec"></small>
       </button>
     </div>
-    <button id="btn-main-settings">Einstellungen &amp; Dōjō</button>
-    <p class="hint"><b>RMB</b> blocken · im letzten Moment: Abwehr · <b>LMB</b> Hieb · Esc gibt die Maus frei · H zeigt die Steuerung</p>
+    <div class="menu-row" id="diff-row">
+      <span>Schwierigkeit</span>
+      <button data-diff="easy">Leicht</button><button data-diff="normal">Normal</button><button data-diff="hard">Schwer</button>
+      <em id="diff-note"></em>
+    </div>
+    <div class="menu-row" id="lang-row">
+      <span>Sprache</span>
+      <button data-lang="de">Deutsch</button><button data-lang="en">English</button>
+      <button id="btn-main-settings">Einstellungen, Dōjō &amp; Erfolge</button>
+    </div>
+    <p class="hint"><b>RMB</b> blocken · im letzten Moment: Abwehr · <b>LMB</b> Hieb · Esc pausiert · H zeigt die Steuerung</p>
+  </div>
+</div>
+<div id="pause">
+  <div class="card">
+    <h2>Pause</h2>
+    <button id="pause-resume">Weiter</button>
+    <button id="pause-restart">Neustart</button>
+    <button id="pause-main">Hauptmenü</button>
+    <p class="hint">Die Leiste oben bleibt bedienbar · ein Klick ins Bild geht auch weiter</p>
   </div>
 </div>
 <div id="death"><div id="death-cause">NIEDERGESTRECKT</div><small id="death-sub">Neuer Versuch …</small></div>

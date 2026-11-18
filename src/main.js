@@ -22,6 +22,10 @@ import { Horse } from './mount.js';
 import { BladeBind, Standoff, Perks, Replay, Versus } from './extras.js';
 import { Quality } from './perf.js';
 import { Settings, Progress, Menu, Training } from './meta.js';
+import { Defense } from './defense.js';
+import { DIFFS, Achievements, Daily, Tutorial } from './goals.js';
+import { Front, Touch } from './front.js';
+import { I18n } from './i18n.js';
 
 const MODES = {
   duel: { name: 'Duell', call: 'DUELL' },
@@ -30,8 +34,12 @@ const MODES = {
   chaos: { name: 'Chaos', call: 'CHAOS', run: true },                 // they just keep coming, more and more
   versus: { name: '2 Spieler', call: 'ZWEIKAMPF' },                   // player 2 on a gamepad or the arrow keys
   training: { name: 'Training', call: 'TRAINING' },                  // a partner who does one thing, over and over
+  defense: { name: 'Verteidigung', call: 'VERTEIDIGUNG', run: true },  // hold the shrine: waves, money, soldiers, traps
+  daily: { name: 'Tagesaufgabe', call: 'TAGESAUFGABE', run: true },    // survival, the same for everyone today
+  tutorial: { name: 'Einführung', call: 'EINFÜHRUNG' },                // the first round, step by step
 };
-const MODE_ORDER = ['duel', 'skirmish', 'survival', 'chaos', 'versus', 'training'];
+// what M cycles through: the sandbox. The other modes are picked in the main menu.
+const MODE_ORDER = ['duel', 'skirmish', 'chaos', 'versus', 'training'];
 const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危', 'heavy'], arrow: ['弓', 'arrow'], gun: ['危', 'heavy'] };
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
@@ -98,6 +106,8 @@ class Game {
     this.settings = new Settings(this);
     this.progress = new Progress(this);
     this.training = new Training(this);
+    this.ach = new Achievements(this);
+    this.tutorial = new Tutorial(this);
     this.arena = new Arena(this);
     this.platforms = buildPlatforms(this);
     this.grip = 1;                 // how well feet hold on the ground (rain makes it slick)
@@ -108,6 +118,8 @@ class Game {
     this.SamuraiClass = Samurai;
     this.weather = new Weather(this);
     this.fire = new Fire(this);
+    this.defense = new Defense(this);
+    this.daily = new Daily(this);
 
     this.pending = [];
     this.npcs = [];        // everyone but the player: opponents (team 1) and allies (team 0)
@@ -151,6 +163,9 @@ class Game {
 
     this.setupUI();
     this.menu = new Menu(this);
+    this.touch = new Touch(this);
+    this.i18n = new I18n(this);
+    this.front = new Front(this);
     this.refreshSkins();
     this.quality = new Quality(this);
     this.spawnWave(true);
@@ -172,7 +187,7 @@ class Game {
   }
 
   // ------------------------------------------------------------------ spawning
-  spawnFighter(team, typeKey, pos) {
+  spawnFighter(team, typeKey, pos, typeDef) {
     const pp = this.player.getPos(new THREE.Vector3());
     if (!pos) {
       let best = null;
@@ -181,7 +196,7 @@ class Game {
         const c = team === 0
           ? new THREE.Vector3(pp.x + Math.sin(ang) * rand(2, 3.5), 0, pp.z + Math.cos(ang) * rand(2, 3.5))
           : new THREE.Vector3(Math.sin(ang) * rand(6, 10.5), 0, Math.cos(ang) * rand(6, 10.5));
-        if (Math.hypot(c.x, c.z) > 11.5) continue;
+        if (Math.hypot(c.x, c.z) > 11.5 || !this.spotFree(c.x, c.z)) continue;      // not inside the podium, a tree, the palisade
         const d = Math.hypot(c.x - pp.x, c.z - pp.z);
         const crowd = this.npcs.some((e) => e.state === 'active' && e.getPos(_b).distanceTo(c) < 2);
         if ((team === 0 || d > 4.5) && !crowd) { best = c; break; }
@@ -189,7 +204,7 @@ class Game {
       }
       pos = best || new THREE.Vector3(0, 0, -3);
     }
-    const type = team === 0 ? ALLY_TYPE : TYPES[typeKey] || TYPES.ronin;
+    const type = typeDef || (team === 0 ? ALLY_TYPE : TYPES[typeKey] || TYPES.ronin);
     const style = pick(type.styles);
     const yaw = Math.atan2(-(pp.x - pos.x), -(pp.z - pos.z));
     const k = new Samurai(this, {
@@ -199,7 +214,7 @@ class Game {
     k.brain = new Brain(this, k, type);
     if (type.mounted) this.horses.push(new Horse(this, k));
     if (type.ranged) k.parts.fArmL.add(rangedProp(type.ranged));
-    if (team === 1 && this.mode === 'survival') {
+    if (team === 1 && this.waves) {
       // every wave they are a little quicker to strike, better at guarding and harder to shake
       const w = this.wave;
       k.brain.aggr *= 1 + 0.035 * w;
@@ -215,6 +230,12 @@ class Game {
     return k;
   }
 
+  /** Room to stand here: nothing solid in the way. */
+  spotFree(x, z) {
+    for (const [ox, oz, r] of this.arena.obstacles) if (Math.hypot(x - ox, z - oz) < r + 0.45) return false;
+    return !this.defense.blocksSpot(x, z);
+  }
+
   removeNpc(k) {
     k.disposed = true;
     k.labelEl?.remove();
@@ -228,7 +249,7 @@ class Game {
 
   rollType() {
     if (this.enemyType !== 'random') return this.enemyType;
-    const diff = this.mode === 'survival' ? Math.min(1, this.wave * 0.1)
+    const diff = this.waves ? Math.min(1, this.wave * 0.1)
       : this.mode === 'chaos' ? Math.min(0.45, 0.05 + this.runT * 0.004)      // a mob: mostly foot soldiers and rōnin
         : Math.min(0.75, 0.15 + this.kills * 0.05);
     return randomType(diff);
@@ -247,16 +268,23 @@ class Game {
     } else if (this.mode === 'skirmish') {
       const n = Math.min(3, 9 - alive.length);
       for (let i = 0; i < n; i++) this.spawnFighter(1, this.rollType());
-    } else if (this.mode === 'survival') {
+    } else if (this.mode === 'tutorial') {
+      this.tutorial.begin();
+    } else if (this.mode === 'defense') {
+      if (!first) this.defense.startWave();
+      return;                                   // the defense announces its own waves
+    } else if (this.waves) {
       this.wave++;
+      const daily = this.mode === 'daily';
       const n = Math.min(2 + Math.floor(this.wave * 0.8), 8) - alive.length;
-      for (let i = 0; i < n; i++) this.spawnFighter(1, i === 0 && this.wave % 5 === 0 ? 'daimyo' : this.rollType());
+      for (let i = 0; i < n; i++) this.spawnFighter(1, i === 0 && this.wave % 5 === 0 ? 'daimyo' : daily ? this.daily.typeFor(this.wave, i) : this.rollType());
       this.hordeT = 0;
       this.waveCleared = false;
+      this.ach.best(daily ? 'daily' : 'wave', this.wave);
     } else {
       for (let i = 0; i < 3; i++) this.spawnFighter(1, this.rollType());
     }
-    this.callout(this.mode === 'survival' ? `WELLE ${this.wave}` : MODES[this.mode].call, null, 'crit');
+    this.callout(this.waves ? `WELLE ${this.wave}` : MODES[this.mode].call, null, 'crit');
     this.audio.taiko(0.7);
   }
 
@@ -284,25 +312,37 @@ class Game {
     this.chaosT = 2;
     this.runOver = false;
     this.playerDownT = 0;
+    this.defense.reset();
+    if (this.mode === 'daily') this.daily.begin();
     this.spawnWave(true);
     if (this.mode === 'duel' && this.started && this.input.locked && this.settings.standoff) this.standoff.start(this.livingEnemies[0]);
   }
 
   get isRun() { return !!MODES[this.mode].run; }
+  /** Survival and its daily twin: wave after wave. */
+  get waves() { return this.mode === 'survival' || this.mode === 'daily'; }
+  /** How hard it is. The daily challenge is the same for everyone. */
+  get diff() { return DIFFS[this.mode === 'daily' ? 'normal' : this.settings.diff] || DIFFS.normal; }
+  /** A started game that has let go of the mouse stands still. */
+  get paused() { return this.started && !this.input.locked; }
 
   /** The player fell in survival / chaos: the run is over, note the result and the best so far. */
   endRun() {
     this.runOver = true;
-    const key = 'vibesamurai.best.' + this.mode;
+    const daily = this.mode === 'daily', byWave = this.waves || this.mode === 'defense';
+    const key = daily ? 'vibesamurai.daily' : 'vibesamurai.best.' + this.mode;
     const now = { wave: this.wave, kills: this.kills, time: Math.floor(this.runT) };
+    if (daily) now.date = this.daily.date;
     let best = null;
     try { best = JSON.parse(localStorage.getItem(key) ?? localStorage.getItem('heavysteel.best.' + this.mode)); } catch { /* no storage: just no record */ }
-    const score = (r) => (this.mode === 'survival' ? r.wave * 1000 + r.kills : r.kills * 1000 + r.time);
+    if (daily && best?.date !== this.daily.date) best = null;       // yesterday's run does not count today
+    const score = (r) => (byWave ? r.wave * 1000 + r.kills : r.kills * 1000 + r.time);
     const record = !best || score(now) > score(best);
     if (record) { best = now; try { localStorage.setItem(key, JSON.stringify(now)); } catch { /* ignore */ } }
-    const line = (r) => (this.mode === 'survival' ? `Welle ${r.wave} · ${r.kills} besiegt · ${fmtTime(r.time)}` : `${r.kills} besiegt · ${fmtTime(r.time)}`);
+    const line = (r) => (byWave ? `Welle ${r.wave} · ${r.kills} besiegt · ${fmtTime(r.time)}` : `${r.kills} besiegt · ${fmtTime(r.time)}`);
     this.runResult = line(now) + (record ? '  —  neuer Rekord!' : `  —  Rekord: ${line(best)}`);
     this.audio.taiko(1);
+    this.front.refresh();
   }
 
   /** Survival: next wave once the yard is clear. Chaos: a steady, swelling stream. */
@@ -310,7 +350,8 @@ class Game {
     if (!this.isRun || this.runOver) return;
     this.runT += dt;
     const alive = this.livingEnemies.length;
-    if (this.mode === 'survival') {
+    if (this.mode === 'defense') return;        // the defense keeps its own clock (see Defense.update)
+    if (this.waves) {
       if (alive) return;
       if (!this.waveCleared && this.wave > 0) {
         this.waveCleared = true;
@@ -363,15 +404,35 @@ class Game {
     if (!MODES[mode]) return;
     this.started = false;                  // so a duel opens with the draw once the mouse is caught
     this.setMode(mode);
+    this.picked = true;
     document.getElementById('overlay').classList.add('hidden');
-    this.audio.init();
-    this.input.lock();
+    this.resume();
   }
+
+  /** Take the mouse (or, on a touch screen, the sticks) and carry on. */
+  resume() {
+    this.audio.init();
+    if (this.touch.active) { this.input.locked = true; this.started = true; }
+    else this.input.lock();
+  }
+
+  /** The lost state of a defense: the shrine is gone. */
+  get lost() { return this.defense.active && this.defense.fallen; }
+
+  // sandbox conveniences: they would be cheating where a run is scored
+  get sandbox() { return MODE_ORDER.includes(this.mode); }
+  callWave() { if (this.mode !== 'tutorial') this.spawnWave(); }
+  callAlly() { if (this.sandbox || this.mode === 'survival') this.spawnFighter(0); }
+  cycleMode() { if (this.sandbox) this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]); }
 
   /** Back to the mode selection. */
   openMainMenu() {
     this.started = false;
+    this.picked = false;
     this.menu.toggle(false);
+    this.touch.release();
+    this.input.locked = !!document.pointerLockElement;
+    this.front.refresh();
     document.getElementById('overlay').classList.remove('hidden');
     if (document.pointerLockElement) document.exitPointerLock();
   }
@@ -380,6 +441,8 @@ class Game {
     if (this.mode === 'versus' && mode !== 'versus') this.versus.stop();
     this.mode = mode;
     this.ui.mode.textContent = MODES[mode].name;
+    document.body.classList.toggle('sandbox', this.sandbox);
+    document.body.dataset.playing = mode;
     this.resetArena();
   }
 
@@ -393,8 +456,9 @@ class Game {
     if (team === 0) return 2;
     if (this.mode === 'duel') return 1;
     if (this.mode === 'chaos') return Math.min(4, 2 + Math.floor(this.runT / 30));
-    if (this.mode === 'survival') return Math.min(4, 2 + Math.floor(this.wave / 4));
-    return 2;
+    const d = this.diff.tokens;
+    if (this.waves || this.mode === 'defense') return Math.max(1, Math.min(4, 2 + Math.floor(this.wave / 4)) + d);
+    return Math.max(1, 2 + d);
   }
 
   // ------------------------------------------------------------------ combat: contacts
@@ -526,7 +590,7 @@ class Game {
       this.audio.deflect();
       this.addHitStop(mine ? 0.085 : 0.03);
       if (mine) { this.shake = Math.max(this.shake, 0.4); this.fx.chroma = Math.max(this.fx.chroma, 0.5); }
-      if (D.isPlayer) { this.callout('ABGEWEHRT!', point, 'parry'); this.ctl.counterT = 0.7; }
+      if (D.isPlayer) { this.callout('ABGEWEHRT!', point, 'parry'); this.ctl.counterT = 0.7; this.tutorial.event('deflect'); this.tutorial.event('block'); }
       else if (A.isPlayer) this.callout('ABGEWEHRT', point, 'small');
       if (D.human && D.ctl) D.ctl.counterT = 0.7;
       if (D.isPlayer) this.training.ok(A.atk?.unblockable ? 'heavy' : 'cut');
@@ -540,6 +604,7 @@ class Game {
       this.addHitStop(0.03);
       if (D.isPlayer) this.shake = Math.max(this.shake, crush ? 0.7 : 0.25);
       if (crush && D.isPlayer && !broke) this.callout('DURCHBROCHEN!', point, 'crit');
+      if (D.isPlayer) this.tutorial.event('block');
       if (A.isPlayer && s > 4) this.callout('GEBLOCKT', point, 'small');
       (D.isPlayer ? this.ctl : D.ctl)?.spend(0.05 * impact);       // holding a blow costs breath
       if (broke) this.onGuardBroken(D, point);
@@ -632,6 +697,8 @@ class Game {
 
     // ---- raw severity from impact speed & weapon, then armour decides what gets through
     if (attacker && attacker.team === 1 && k.isPlayer && !attacker.human) raw *= this.mode === 'chaos' ? 0.5 : 0.7;
+    if (k.isPlayer && (attacker || w.thrower)?.team === 1) raw *= this.diff.dmg;
+    if (this.mode === 'tutorial') raw *= k.isPlayer ? 0.1 : 0.25;                                             // a lesson, not a fight
     if (byPlayer) raw *= this.perk.dmg;
     if (this.mode === 'training') raw *= k.isPlayer ? 0.12 : this.training.drill === 'free' ? 1 : 0.3;      // practice: nobody is cut down by accident
     if (attacker && w.attached && attacker.liveT <= 0) raw *= 0.25;   // the blade only bites in a committed cut
@@ -1351,6 +1418,7 @@ class Game {
   // ------------------------------------------------------------------ fighter events
   onSwing(k, heavy = false) {
     k.swingHeavy = !!heavy;
+    if (k.isPlayer) this.tutorial.event('cut');
     if (k.isPlayer) { if (heavy) { this.audio.whooshBurst(0.7); this.fx.fovKick = Math.max(this.fx.fovKick, 0.6); } }
     else if (k.getPos(_a).distanceTo(this.player.getPos(_b)) < 7) this.audio.whooshBurst(0.22);
   }
@@ -1480,7 +1548,8 @@ class Game {
         e.labelEl = null;
         if (e.team === 1) {
           this.kills++;
-          if (!e.human) this.progress.earn(10 * (e.kind?.rank ?? 1));
+          if (!e.human) { this.progress.earn(10 * (e.kind?.rank ?? 1)); this.ach.add('kills'); }
+          this.defense.onKill(e);
           if (this.perk.lifesteal && this.player.state === 'active') {
             const inj = this.player.inj;
             this.player.posture = 0;
@@ -1595,9 +1664,7 @@ class Game {
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
       slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'), stamina: $('stamina-fill'), staminaBox: $('stamina'),
     };
-    const start = () => { this.audio.init(); this.input.lock(); };
-    for (const b of document.querySelectorAll('#mode-cards .mode-card')) b.addEventListener('click', () => { if (!b.disabled) this.play(b.dataset.mode); });
-    $('btn-main-settings').addEventListener('click', () => this.menu.toggle(true));
+    const start = () => { if (this.started || this.picked) this.resume(); };      // also when the browser refused the mouse at first
     this.canvas.addEventListener('click', start);
     document.addEventListener('pointerlockchange', () => {
       $('overlay').classList.toggle('hidden', this.input.locked || this.started);
@@ -1606,9 +1673,9 @@ class Game {
       if (this.input.locked) this.started = true;
     });
     const btn = (id, fn) => $(id).addEventListener('click', (e) => { this.audio.init(); fn(); e.currentTarget.blur(); });
-    btn('btn-spawn', () => this.spawnWave());
-    btn('btn-ally', () => this.spawnFighter(0));
-    btn('btn-mode', () => this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]));
+    btn('btn-spawn', () => this.callWave());
+    btn('btn-ally', () => this.callAlly());
+    btn('btn-mode', () => this.cycleMode());
     btn('btn-reset', () => this.resetArena());
     btn('btn-slow', () => this.toggleSlowmo());
     btn('btn-weather', () => this.nextWeather());
@@ -1658,6 +1725,8 @@ class Game {
   }
 
   callout(text, worldPos, cls = '') {
+    this.ach.said(text);
+    if (text === 'TODESSTOSS!') this.tutorial.event('finish');
     if (cls === 'small' && worldPos) return;      // no running commentary on every scratch
     const el = document.createElement('div');
     el.className = 'callout ' + cls;
@@ -1685,11 +1754,13 @@ class Game {
   handleKeys(frame) {
     const p = frame.pressed;
     if (!p.size) return;
-    if (p.has('KeyR')) this.spawnWave();
-    if (p.has('KeyT')) this.spawnFighter(0);
-    if (p.has('KeyM')) this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]);
+    const shop = this.defense.keys(p);            // in the build pause the digits buy, Enter / R start the wave
+    if (p.has('KeyR') && !shop) this.callWave();
+    if (p.has('KeyT')) this.callAlly();
+    if (p.has('KeyM')) this.cycleMode();
     if (p.has('Backspace') || p.has('Delete')) this.resetArena();
     if (this.perks.choosing) { for (let i = 0; i < 3; i++) if (p.has('Digit' + (i + 1))) this.perks.pick(i); }
+    else if (shop || (this.defense.active && this.defense.phase === 'build')) { /* digits belong to the shop */ }
     else WEAPON_ORDER.forEach((key, i) => { if (p.has('Digit' + (i + 1))) this.setPlayerWeapon(key); });
     if (p.has('KeyU')) this.nextWeather();
     if (p.has('KeyP')) { this.settings.set('replay', !this.settings.replay); this.callout(this.settings.replay ? 'WIEDERHOLUNG AN' : 'WIEDERHOLUNG AUS', null, 'small'); }
@@ -1771,7 +1842,7 @@ class Game {
     if (rk !== this.lastRank) { ui.rank.textContent = rk; this.lastRank = rk; }
     const sc = `${this.kills}`;
     if (sc !== this.lastKills) { ui.kills.textContent = sc; this.lastKills = sc; }
-    const wv = this.mode === 'survival' ? ` · Welle ${this.wave} · ${fmtTime(this.runT)}${this.perks.taken.length ? ' · ' + this.perks.taken.length + ' Verbesserungen' : ''}`
+    const wv = this.waves ? ` · Welle ${this.wave} · ${fmtTime(this.runT)}${this.perks.taken.length ? ' · ' + this.perks.taken.length + ' Verbesserungen' : ''}`
       : this.mode === 'versus' ? ` · Spieler 1  ${this.versus.score[0]} : ${this.versus.score[1]}  Spieler 2${this.versus.pad.connected ? '' : ' (Pfeiltasten , . - · oder Gamepad anschließen)'}`
       : this.mode === 'chaos' ? ` · ${fmtTime(this.runT)} · ${this.livingEnemies.length} im Hof` : '';
     if (wv !== this.lastWave) { ui.wave.textContent = wv; this.lastWave = wv; }
@@ -1784,10 +1855,10 @@ class Game {
     const lines = inj.status();
     const html = lines.length ? lines.map((l) => `<div>${l}</div>`).join('') : '<div class="ok">Unverletzt</div>';
     if (html !== this.lastStatus) { ui.status.innerHTML = html; this.lastStatus = html; }
-    const down = P.dead || (P.state === 'ragdoll' && !inj.canStand);
+    const down = P.dead || (P.state === 'ragdoll' && !inj.canStand) || this.lost;
     ui.death.classList.toggle('show', down && this.playerDownT > 1);
     if (down) {
-      ui.deathCause.textContent = P.dead ? up(inj.cause || 'Gefallen') : inj.consciousness <= 0.05 ? 'BEWUSSTLOS' : 'KAMPFUNFÄHIG';
+      ui.deathCause.textContent = this.lost ? 'DER SCHREIN IST GEFALLEN' : P.dead ? up(inj.cause || 'Gefallen') : inj.consciousness <= 0.05 ? 'BEWUSSTLOS' : 'KAMPFUNFÄHIG';
       const wait = Math.max(0, Math.ceil(6 - this.playerDownT));
       ui.deathSub.textContent = this.runOver ? `${this.runResult}  ·  Neustart in ${wait} s` : `Neuer Versuch in ${wait} s …`;
     }
@@ -1855,6 +1926,7 @@ class Game {
       const dx = pos.x - ox, dz = pos.z - oz, d = Math.hypot(dx, dz);
       if (d < or && d > 1e-4 && pos.y < 3.2) { pos.x = ox + dx / d * or; pos.z = oz + dz / d * or; }
     }
+    this.defense.keepCamera(this.camTarget, pos);
     const look = this.camTarget.clone().addScaledVector(dir, 6).addScaledVector(right, 0.3);
     if (this.shake > 0) {
       const s = this.shake * this.shake * 0.12;
@@ -1872,13 +1944,16 @@ class Game {
     this.quality.update(rawDt);
     const realDt = Math.min(rawDt, 1 / 20);
     const frame = this.input.consume();
-    if (!this.mainMenu) this.handleKeys(frame);
+    const halted = this.mainMenu || this.paused;
+    if (!halted) this.handleKeys(frame);
+    else if (this.started && frame.pressed.has('KeyI')) this.menu.toggle();      // the dōjō can still be closed again
+    this.front.update();
 
     let target = this.slowmo ? 0.3 : 1;
     if (this.slowT > 0) { this.slowT -= realDt; target = Math.min(target, 0.2); }
     if (this.hitStopT > 0) { this.hitStopT -= realDt; this.timeScale = 0.05; }
     else this.timeScale += (target - this.timeScale) * Math.min(1, realDt * 12);
-    if (this.mainMenu) this.timeScale = 0;      // the yard holds its breath behind the mode selection
+    if (halted) this.timeScale = 0;             // the yard holds its breath behind the mode selection and while paused
     const dt = realDt * this.timeScale;
     const frozen = this.timeScale < 0.1;
     const P = this.player;
@@ -1937,14 +2012,18 @@ class Game {
 
     for (const k of this.fighters) k.syncVisuals(dt);
     this.replay.record(realDt);
-    this.versus.update(realDt);
-    this.perks.update(realDt);
-    this.training.update(realDt);
+    const liveDt = halted ? 0 : realDt;         // real time, but not while the game stands still
+    this.versus.update(liveDt);
+    this.perks.update(liveDt);
+    this.training.update(liveDt);
+    this.tutorial.update(liveDt);
+    this.defense.update(dt);
     this.weather.update(realDt);
     // sandbox: after going down the player is patched up and rises again
-    const down = P.dead || (P.state === 'ragdoll' && !P.inj.canStand);
-    this.playerDownT = down ? this.playerDownT + realDt : 0;
+    const down = P.dead || (P.state === 'ragdoll' && !P.inj.canStand) || this.lost;
+    this.playerDownT = down ? this.playerDownT + liveDt : 0;
     if (down && this.isRun && !this.runOver) this.endRun();
+    if (!down && this.lost) this.playerDownT = 0;
     if (down && this.playerDownT > 6 && this.isRun) this.resetArena();
     else if (down && this.playerDownT > 6 && this.mode !== 'versus') {
       const at = P.getPos(new THREE.Vector3());
