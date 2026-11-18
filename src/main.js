@@ -415,7 +415,7 @@ class Game {
         this.audio.hit(0.3, false);
       } else if (hs.type === 'core' || hs.type === 'rag') {
         const k = hs.knight;
-        if (k === w.owner && w.attached) continue;
+        if (k === w.owner) continue;                 // nobody is cut by his own sword, in hand or dropped as he falls
         if (w.thrower && k.team === w.thrower.team) continue;
         if (!w.attached && c.speed < 6) continue;
         w.lastHit.set(key, this.time);

@@ -4,7 +4,11 @@ Physik-Schwertkampf im Browser: ein ummauerter Dōjō-Hof in der Abenddämmerung
 Gewicht, Deckung und Abwehr im letzten Moment, Haltung brechen, Todesstoß.
 Three.js + cannon-es liegen lokal in `vendor/` – kein Build, keine Installation, kein Internet nötig.
 
-## Starten
+**Direkt im Browser spielen:** https://eray594.github.io/vibe-samurai/
+
+Jeder Push auf `main` stellt diese Seite neu bereit – aber nur, wenn die Tests vorher grün sind.
+
+## Starten (lokal)
 
 | System | So geht's |
 |---|---|
@@ -192,6 +196,18 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 - **Zerstörbares:** Kisten, Sake-Fässer, Tonkrüge, Papierwände und (mit Wucht) Steinlaternen
   zerbrechen in lose Teile; Strohmatten und Bambus lassen sich in beliebiger Höhe durchschneiden.
 - **Sandbox:** Waffenständer, Verbündete, Zeitlupe. In Duell und Gefecht steht man nach 6 s wieder auf.
+
+## Tests
+
+```bash
+node tests/run.mjs
+```
+
+Startet das Spiel in einem unsichtbaren Chrome, treibt die Spielschleife mit festen 60 Hz an und
+prüft rund 70 Dinge: ob das Spiel überhaupt startet, Bewegung, Konter, Gegnertypen, Wetter, Feuer,
+alle Modi – und dass die Browser-Konsole fehlerfrei bleibt. Braucht Node 22+ und Chrome, sonst
+nichts. Dieselben Tests laufen bei jedem Push auf GitHub (`.github/workflows/deploy.yml`); schlagen
+sie fehl, wird nicht veröffentlicht.
 
 ## Aufbau (`src/`)
 

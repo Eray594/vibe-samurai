@@ -1,0 +1,63 @@
+# Bei jedem Push auf main: erst die Tests, dann – nur wenn sie grün sind – das Spiel live stellen.
+name: Test und Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Syntax aller Skripte
+        run: |
+          for f in src/*.js tools/*.mjs tests/run.mjs; do node --check "$f"; done
+          bash -n start.sh
+      - name: Startskript liefert das Spiel aus
+        run: |
+          NO_BROWSER=1 PORT=8765 bash start.sh &
+          sleep 3
+          curl -sf http://127.0.0.1:8765/ | grep -q 'VIBE SAMURAI'
+          curl -sf -o /dev/null http://127.0.0.1:8765/src/main.js
+          # zweiter Start bei laufendem Spiel darf nicht abstürzen
+          NO_BROWSER=1 PORT=8765 bash start.sh
+      - name: Spiel im Browser (headless Chrome)
+        run: node tests/run.mjs
+
+  deploy:
+    name: Live stellen
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Nur das Spiel selbst zusammenstellen
+        run: |
+          mkdir _site
+          cp -r index.html style.css src vendor LICENSE _site/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
