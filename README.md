@@ -70,11 +70,33 @@ Die vollständige Tastenbelegung:
 | 1–6 | Katana · Wakizashi · Nōdachi · Yari · Naginata · Kanabō |
 | K | Skin: Rōnin · Samurai · Weißer Kranich · Schatten · Oni |
 | R · T | Gegner spawnen · Verbündeten rufen |
-| M | Modus: Duell → Gefecht (immer +3) → **Überleben** → **Chaos** → **2 Spieler** |
+| M | Modus: Duell → Gefecht (immer +3) → **Überleben** → **Chaos** → **2 Spieler** → **Training** |
+| I | Menü: Einstellungen und Dōjō |
+| O | Training: nächste Übung |
 | U | Wetter / Tageszeit: Abenddämmerung → Nacht → Regen → Schnee |
 | P | Wiederholung des Todesstoßes an/aus |
 | Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
 | Backspace | Hof zurücksetzen · Esc gibt die Maus für die Leiste oben frei |
+
+## Training
+
+Im Modus **Training** macht ein Übungspartner immer nur eine Sache, damit sich die Antwort darauf
+einschleifen lässt: Hiebe (abwehren), Stöße (niedertreten), Feger (überspringen), schwere Hiebe
+(ausweichen), Pfeile, ein stillstehender Gegner für Kombos und zuletzt freier Kampf. Oben links
+steht, was zu tun ist und wie oft es gelungen ist; `O` wechselt zur nächsten Übung. Du nimmst hier
+kaum Schaden, und Ehre gibt es keine.
+
+## Ehre, Rang und Dōjō
+
+Jeder Besiegte bringt Ehre (mehr für ranghohe Gegner), jede überstandene Überleben-Welle ebenfalls.
+Die gesamte verdiente Ehre bestimmt deinen Rang (Ashigaru → Rōnin → Samurai → Hatamoto → Daimyō →
+Shōgun), angezeigt unten links. Im Menü (`I`) lässt sich Ehre im **Dōjō** dauerhaft eintauschen:
+vierter Verband, zweites Kunai, mehr Haltung, schnelleres Iai, schnellere Erholung und zwei
+zusätzliche Skins (Weißer Geist, Goldener Daimyō). Alles, was es vorher schon gab, bleibt frei.
+Der Fortschritt liegt im Browser auf diesem Rechner.
+
+Im selben Menü: Mausempfindlichkeit, Lautstärke, Blut an/aus, Duell-Eröffnung an/aus und
+Wiederholung an/aus.
 
 ## Angriffe lesen
 
@@ -131,6 +153,7 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
   **Teppō-Schütze** (Luntenschloss: lange Ansage, nicht zu blocken) und **Reiter** (prescht durch
   den Hof, reitet nieder; ein harter Treffer aufs Pferd oder ein Tritt holt ihn herunter).
   Oben in der Leiste wählbar oder zufällig.
+- **Gegner klettern nach.** Wer aufs Podest flieht, bekommt Besuch.
 - **Moral.** Fällt der Anführer oder rollt ein Kopf, verlieren die Zaghaften für einige Sekunden
   den Mut und weichen zurück.
 - **Duell-Eröffnung.** Jedes Duell beginnt Auge in Auge, die Hand am Griff: warten, bis der Gegner
@@ -171,6 +194,7 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 | `world.js` | Wetter und Tageszeit, Feuer, das Podest zum Klettern |
 | `mount.js` | Pferd für berittene Gegner |
 | `extras.js` | Klingenbindung, Duell-Eröffnung, Verbesserungen, Wiederholung, 2-Spieler-Modus |
+| `meta.js` | Einstellungen, Ehre und Dōjō, Menü, Trainingsübungen |
 | `perf.js` | Automatische Grafikqualität, Zusammenfassen statischer Geometrie |
 | `physics.js` | Welt, Kollisionsgruppen, Mathe-Helfer |
 

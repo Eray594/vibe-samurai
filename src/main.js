@@ -21,6 +21,7 @@ import { Weather, Fire, buildPlatforms } from './world.js';
 import { Horse } from './mount.js';
 import { BladeBind, Standoff, Perks, Replay, Versus } from './extras.js';
 import { Quality } from './perf.js';
+import { Settings, Progress, Menu, Training } from './meta.js';
 
 const MODES = {
   duel: { name: 'Duell', call: 'DUELL' },
@@ -28,8 +29,9 @@ const MODES = {
   survival: { name: 'Überleben', call: 'ÜBERLEBEN', run: true },     // waves that keep getting harder; death ends the run
   chaos: { name: 'Chaos', call: 'CHAOS', run: true },                 // they just keep coming, more and more
   versus: { name: '2 Spieler', call: 'ZWEIKAMPF' },                   // player 2 on a gamepad or the arrow keys
+  training: { name: 'Training', call: 'TRAINING' },                  // a partner who does one thing, over and over
 };
-const MODE_ORDER = ['duel', 'skirmish', 'survival', 'chaos', 'versus'];
+const MODE_ORDER = ['duel', 'skirmish', 'survival', 'chaos', 'versus', 'training'];
 const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危', 'heavy'], arrow: ['弓', 'arrow'], gun: ['危', 'heavy'] };
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
@@ -93,6 +95,9 @@ class Game {
     this.effects.setPixelScale(innerHeight);
     this.audio = new AudioFX();
     this.input = new Input(this.canvas);
+    this.settings = new Settings(this);
+    this.progress = new Progress(this);
+    this.training = new Training(this);
     this.arena = new Arena(this);
     this.platforms = buildPlatforms(this);
     this.grip = 1;                 // how well feet hold on the ground (rain makes it slick)
@@ -142,8 +147,11 @@ class Game {
     this.perks = new Perks(this);
     this.replay = new Replay(this);
     this.versus = new Versus(this);
+    this.settings.apply();
 
     this.setupUI();
+    this.menu = new Menu(this);
+    this.refreshSkins();
     this.quality = new Quality(this);
     this.spawnWave(true);
     addEventListener('resize', () => this.resize());
@@ -231,6 +239,8 @@ class Game {
     if (this.mode === 'versus') {
       for (const e of [...this.npcs]) this.removeNpc(e);
       this.versus.spawn();
+    } else if (this.mode === 'training') {
+      this.training.spawn();
     } else if (this.mode === 'duel') {
       for (const e of alive) this.removeNpc(e);
       this.spawnFighter(1, this.rollType(), first ? new THREE.Vector3(0, 0, -3) : null);
@@ -275,7 +285,7 @@ class Game {
     this.runOver = false;
     this.playerDownT = 0;
     this.spawnWave(true);
-    if (this.mode === 'duel' && this.started && this.input.locked) this.standoff.start(this.livingEnemies[0]);
+    if (this.mode === 'duel' && this.started && this.input.locked && this.settings.standoff) this.standoff.start(this.livingEnemies[0]);
   }
 
   get isRun() { return !!MODES[this.mode].run; }
@@ -306,6 +316,7 @@ class Game {
         this.waveCleared = true;
         this.ctl.heals = Math.min(this.ctl.maxHeals, this.ctl.heals + 1);
         this.callout(`WELLE ${this.wave} ÜBERSTANDEN`, null, 'parry');
+        this.progress.earn(15 * this.wave);
         this.perks.offer();
       }
       if (this.perks.choosing) return;          // the next wave waits for the choice
@@ -335,6 +346,7 @@ class Game {
   setPlayerSkin(key) {
     const skin = SKINS[key];
     if (!skin) return;
+    if (skin.locked && !this.progress.has(key)) { this.ui.skin.value = this.skin; this.callout('IM DŌJŌ FREISCHALTEN', null, 'small'); return; }
     this.skin = key;
     this.player.setStyle(skin, skin.prot);
     this.player.speedMul = skin.speed;
@@ -445,7 +457,7 @@ class Game {
       if (!t.def.thrown || !o.attached || t.dead) continue;
       if (o.tipSpeed > 6 || o.owner?.guarding) {
         t.dead = true;
-        if (o.owner?.isPlayer) this.callout(t.def.arrow ? 'PFEIL ZERSCHLAGEN!' : 'ABGEWEHRT', c.point, 'parry');
+        if (o.owner?.isPlayer) { this.callout(t.def.arrow ? 'PFEIL ZERSCHLAGEN!' : 'ABGEWEHRT', c.point, 'parry'); if (t.def.arrow) this.training.ok('arrow'); }
       }
       return;
     }
@@ -491,6 +503,7 @@ class Game {
       if (D.isPlayer) { this.callout('ABGEWEHRT!', point, 'parry'); this.ctl.counterT = 0.7; }
       else if (A.isPlayer) this.callout('ABGEWEHRT', point, 'small');
       if (D.human && D.ctl) D.ctl.counterT = 0.7;
+      if (D.isPlayer) this.training.ok(A.atk?.unblockable ? 'heavy' : 'cut');
       if (broke) this.onGuardBroken(A, point);
     } else {
       const broke = D.addPosture(POSTURE.block * impact);
@@ -535,7 +548,7 @@ class Game {
       if (w.attached && attacker) {
         // a sweep at the legs passes under a jump; a high cut passes over a slide
         if (attacker.atk?.low && k.airborne) {
-          if (k.sweepJumpT <= 0 && (k.isPlayer || k.human)) this.callout('ÜBERSPRUNGEN!', c.point, 'parry');
+          if (k.sweepJumpT <= 0 && (k.isPlayer || k.human)) { this.callout('ÜBERSPRUNGEN!', c.point, 'parry'); if (k.isPlayer) this.training.ok('sweep'); }
           k.sweepJumpT = 0.9;
           return;
         }
@@ -567,6 +580,7 @@ class Game {
             this.effects.sparksAt(c.point, 14, 0.9);
             this.audio.clank(0.6, 1.4);
             w.dead = true;
+            if (k.isPlayer && def.arrow) this.training.ok('arrow');
             return;
           }
         }
@@ -592,6 +606,7 @@ class Game {
     // ---- raw severity from impact speed & weapon, then armour decides what gets through
     if (attacker && attacker.team === 1 && k.isPlayer && !attacker.human) raw *= this.mode === 'chaos' ? 0.5 : 0.7;
     if (byPlayer) raw *= this.perk.dmg;
+    if (this.mode === 'training') raw *= k.isPlayer ? 0.12 : this.training.drill === 'free' ? 1 : 0.3;      // practice: nobody is cut down by accident
     if (attacker && w.attached && attacker.liveT <= 0) raw *= 0.25;   // the blade only bites in a committed cut
     if (attacker?.swingHeavy) raw *= 1.25;
     if (!w.attached) raw *= this.time - (w.thrownAt ?? -9) < 2.5 ? 1.5 : 0.5;      // a weapon thrown in earnest, or one just lying about
@@ -1035,6 +1050,7 @@ class Game {
         this.audio.thud(1); this.audio.deflect();
         this.addHitStop(0.09); this.slowT = Math.max(this.slowT, 0.3); this.shake = Math.max(this.shake, 0.5);
         if (k.isPlayer || k.human) this.callout('KLINGE NIEDERGETRETEN!', point, 'parry');
+        if (k.isPlayer) this.training.ok('thrust');
         if (broke) this.onGuardBroken(f, point);
       } else {
         k.iframeT = Math.max(k.iframeT, 0.42);
@@ -1044,6 +1060,7 @@ class Game {
         this.fx.chroma = Math.max(this.fx.chroma, 0.6);
         this.audio.tick?.();
         if (k.isPlayer || k.human) this.callout('PERFEKT AUSGEWICHEN!', me.clone().setY(1.6), 'parry');
+        if (k.isPlayer) this.training.ok(a.unblockable ? 'heavy' : 'cut');
       }
       return;
     }
@@ -1306,6 +1323,7 @@ class Game {
         e.labelEl = null;
         if (e.team === 1) {
           this.kills++;
+          if (!e.human) this.progress.earn(10 * (e.kind?.rank ?? 1));
           if (this.perk.lifesteal && this.player.state === 'active') {
             const inj = this.player.inj;
             this.player.posture = 0;
@@ -1418,7 +1436,7 @@ class Game {
       weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), death: $('death'),
       posture: $('posture-fill'), postureBox: $('posture'), tools: $('tools'), mode: $('mode-label'), skin: $('skin-select'),
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
-      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'),
+      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'),
     };
     const start = () => { this.audio.init(); this.input.lock(); };
     $('btn-start').addEventListener('click', start);
@@ -1426,7 +1444,7 @@ class Game {
     document.addEventListener('pointerlockchange', () => {
       $('overlay').classList.toggle('hidden', this.input.locked || this.started);
       // the very first duel opens with the draw
-      if (this.input.locked && !this.started && this.mode === 'duel' && this.kills === 0) this.standoff.start(this.livingEnemies[0]);
+      if (this.input.locked && !this.started && this.mode === 'duel' && this.kills === 0 && this.settings.standoff) this.standoff.start(this.livingEnemies[0]);
       if (this.input.locked) this.started = true;
     });
     const btn = (id, fn) => $(id).addEventListener('click', (e) => { this.audio.init(); fn(); e.currentTarget.blur(); });
@@ -1436,6 +1454,7 @@ class Game {
     btn('btn-reset', () => this.resetArena());
     btn('btn-slow', () => this.toggleSlowmo());
     btn('btn-weather', () => this.nextWeather());
+    btn('btn-menu', () => this.menu.toggle());
     btn('btn-quality', () => this.callout('GRAFIK: ' + up(this.quality.cycle()), null, 'small'));
 
     const wb = $('weapon-buttons');
@@ -1448,11 +1467,23 @@ class Game {
       b.addEventListener('click', () => { this.audio.init(); this.setPlayerWeapon(key); b.blur(); });
       wb.appendChild(b);
     });
-    for (const key of SKIN_ORDER) this.ui.skin.add(new Option(SKINS[key].name, key));
     this.ui.skin.addEventListener('change', () => { this.setPlayerSkin(this.ui.skin.value); this.ui.skin.blur(); });
     this.ui.type.add(new Option('Zufall', 'random'));
     for (const key of TYPE_ORDER) this.ui.type.add(new Option(TYPES[key].name, key));
     this.ui.type.addEventListener('change', () => { this.enemyType = this.ui.type.value; this.ui.type.blur(); });
+  }
+
+  /** Outfit list: what is not earned yet is shown, but greyed out. */
+  refreshSkins() {
+    const sel = this.ui.skin;
+    sel.length = 0;
+    for (const key of SKIN_ORDER) {
+      const s = SKINS[key], locked = s.locked && !this.progress.has(key);
+      const o = new Option(locked ? `${s.name} (Dōjō)` : s.name, key);
+      o.disabled = locked;
+      sel.add(o);
+    }
+    sel.value = this.skin;
   }
 
   nextWeather() {
@@ -1502,8 +1533,15 @@ class Game {
     if (this.perks.choosing) { for (let i = 0; i < 3; i++) if (p.has('Digit' + (i + 1))) this.perks.pick(i); }
     else WEAPON_ORDER.forEach((key, i) => { if (p.has('Digit' + (i + 1))) this.setPlayerWeapon(key); });
     if (p.has('KeyU')) this.nextWeather();
-    if (p.has('KeyP')) { this.replay.enabled = !this.replay.enabled; this.callout(this.replay.enabled ? 'WIEDERHOLUNG AN' : 'WIEDERHOLUNG AUS', null, 'small'); }
-    if (p.has('KeyK')) this.setPlayerSkin(SKIN_ORDER[(SKIN_ORDER.indexOf(this.skin) + 1) % SKIN_ORDER.length]);
+    if (p.has('KeyP')) { this.settings.set('replay', !this.settings.replay); this.callout(this.settings.replay ? 'WIEDERHOLUNG AN' : 'WIEDERHOLUNG AUS', null, 'small'); }
+    if (p.has('KeyO') && this.mode === 'training') this.training.next();
+    if (p.has('KeyI')) this.menu.toggle();
+    if (p.has('KeyK')) {
+      // next outfit that is yours to wear
+      let i = SKIN_ORDER.indexOf(this.skin);
+      do i = (i + 1) % SKIN_ORDER.length; while (SKINS[SKIN_ORDER[i]].locked && !this.progress.has(SKIN_ORDER[i]));
+      this.setPlayerSkin(SKIN_ORDER[i]);
+    }
     if (p.has('KeyZ')) this.toggleSlowmo();
     if (p.has('KeyN')) { this.audio.music = !this.audio.music; this.callout(this.audio.music ? 'MUSIK AN' : 'MUSIK AUS', null, 'small'); }
     if (p.has('KeyH')) this.ui.help.classList.toggle('hidden');
@@ -1570,6 +1608,8 @@ class Game {
     if (st !== this.lastStance) { ui.stance.textContent = st; this.lastStance = st; }
     const wn = P.weapon.attached ? P.weapon.def.name : 'entwaffnet';
     if (wn !== this.lastWeapon) { ui.weapon.textContent = wn; this.lastWeapon = wn; }
+    const rk = `${up(this.progress.rank)} · ${this.progress.honor} EHRE`;
+    if (rk !== this.lastRank) { ui.rank.textContent = rk; this.lastRank = rk; }
     const sc = `${this.kills}`;
     if (sc !== this.lastKills) { ui.kills.textContent = sc; this.lastKills = sc; }
     const wv = this.mode === 'survival' ? ` · Welle ${this.wave} · ${fmtTime(this.runT)}${this.perks.taken.length ? ' · ' + this.perks.taken.length + ' Verbesserungen' : ''}`
@@ -1701,7 +1741,7 @@ class Game {
       // the man in hand does not stay there for ever
       if (P.holding) { P.heldT -= dt; if (P.heldT <= 0 || P.holding.state !== 'active') this.throwHeld(P, 0.35); }
       for (const k of this.fighters) {
-        if (k.isPlayer || k.human) { this.mantle(k); if (!k.airborne) k.mantleSaid = false; }
+        if (k.isPlayer || k.human || k.brain?.climbing) { this.mantle(k); if (!k.airborne) k.mantleSaid = false; }
         k.update(dt);
       }
       for (const h of this.horses) h.update(dt);
@@ -1735,6 +1775,7 @@ class Game {
     this.replay.record(realDt);
     this.versus.update(realDt);
     this.perks.update(realDt);
+    this.training.update(realDt);
     this.weather.update(realDt);
     // sandbox: after going down the player is patched up and rises again
     const down = P.dead || (P.state === 'ragdoll' && !P.inj.canStand);

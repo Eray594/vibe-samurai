@@ -243,3 +243,39 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 }
 #replay.show { display: block; }
 #replay small { display: block; letter-spacing: 1px; font-size: 12px; color: var(--muted); }
+
+/* ---- menu: settings and dōjō */
+#menu { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: rgba(4,3,4,0.72); z-index: 20; }
+#menu.show { display: flex; }
+#menu .card {
+  width: min(560px, 94vw); max-height: 90vh; overflow-y: auto; padding: 18px 22px; background: #141011;
+  border: 1px solid var(--edge); border-top: 2px solid var(--blood); border-radius: 4px; user-select: none;
+}
+#menu h2 { margin: 6px 0 10px; font-size: 15px; letter-spacing: 5px; color: var(--gold); font-weight: normal; }
+#menu h2 span { color: var(--ink); letter-spacing: 1px; font-size: 13px; }
+#menu label { display: flex; align-items: center; gap: 10px; font-size: 14px; margin: 7px 0; }
+#menu label input[type=range] { flex: 1; accent-color: var(--blood); }
+#menu label b { width: 52px; text-align: right; color: var(--gold); font-weight: normal; }
+#menu label.chk { cursor: pointer; }
+#menu label.chk input { accent-color: var(--blood); width: 16px; height: 16px; }
+#menu .hint { font-size: 12px; color: var(--muted); margin: 0 0 8px; }
+#menu .item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid rgba(190,150,96,0.14); }
+#menu .item div { flex: 1; min-width: 0; }
+#menu .item b { display: block; font-size: 14px; }
+#menu .item span { font-size: 12px; color: var(--muted); }
+#menu .item.own b { color: var(--gold); }
+#menu .item button { min-width: 96px; }
+#menu button:disabled { opacity: .45; cursor: default; }
+#menu .row { display: flex; justify-content: space-between; margin-top: 14px; }
+
+/* ---- training drill */
+#drill {
+  position: fixed; left: 18px; top: 112px; width: 330px; padding: 10px 12px; display: none; flex-direction: column; gap: 4px;
+  background: var(--panel); border: 1px solid var(--edge); border-left: 2px solid var(--gold); border-radius: 4px; pointer-events: none;
+}
+#drill.show { display: flex; }
+#drill small { letter-spacing: 3px; font-size: 10px; color: var(--muted); }
+#drill > b { font-size: 17px; letter-spacing: 1px; color: var(--gold); }
+#drill span b { color: var(--gold); }
+#drill span { font-size: 13px; line-height: 1.4; }
+#drill i { font-style: normal; font-size: 12px; color: var(--muted); margin-top: 2px; }

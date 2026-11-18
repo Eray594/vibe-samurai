@@ -390,7 +390,7 @@ export class Samurai {
     this.guardT = guardUp ? this.guardT + dt : 0;
     this.postureIdle += dt;
     if (this.postureIdle > POSTURE.regenDelay && this.posture > 0) {
-      const rate = POSTURE.regen * this.postureMax * (0.35 + 0.65 * inj.vitality) * (guardUp ? 1.7 : 1);
+      const rate = POSTURE.regen * this.postureMax * (0.35 + 0.65 * inj.vitality) * (guardUp ? 1.7 : 1) * (this.regenMul || 1);
       this.posture = Math.max(0, this.posture - dt * rate);
     }
     if (this.state === 'active') {

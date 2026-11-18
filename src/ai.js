@@ -40,6 +40,8 @@ export class Brain {
     this.aimPoint = new THREE.Vector3();
     this.aimLocked = false;
     this.pushT = 0;
+    this.climbCd = 0;
+    this.climbing = false;
   }
 
   get attacking() { return this.runner.threatening; }
@@ -83,9 +85,15 @@ export class Brain {
     let name = pick(MOVESETS[def.key].ai);
     if (name === 'spin' && type.combo < 3) name = 'kesaR';      // only seasoned fighters spin
     if (k.mountH > 0) name = def.key === 'yari' ? 'tsuki' : pick(['yokoR', 'yokoL', 'kesaR']);
+    // training: the partner does exactly what the drill is about
+    const drill = this.game.training?.drill;
+    if (drill === 'thrust') name = 'tsuki';
+    else if (drill === 'sweep') name = 'ashi';
+    else if (drill === 'cut' || drill === 'heavy') name = pick(['kesaR', 'kesaL', 'shomen', 'yokoR']);
     const weight = 0.75 + def.swing.wind * 1.25;
     // now and then a slow blow with everything behind it: it goes straight through a guard
-    const heavy = first && k.mountH <= 0 && Math.random() < (type.heavy || 0) && !ATTACK_THRUST.has(name) && name !== 'spin';
+    const heavy = drill && drill !== 'free' ? drill === 'heavy'
+      : first && k.mountH <= 0 && Math.random() < (type.heavy || 0) && !ATTACK_THRUST.has(name) && name !== 'spin';
     const a = this.runner.start(name, def, {
       wind: rand(0.3, 0.55) / this.aggr * type.windMul * weight * (1.6 - 0.6 * vit) * (first ? 1 : 0.6) * (heavy ? 1.7 : 1),
       strike: def.swing.strike / (0.55 + 0.45 * vit),
@@ -214,7 +222,15 @@ export class Brain {
       side = 1.4 * this.strafe;
     }
     const rx = -fz, rz = fx;
+    // the target stands on something higher: go straight at it and climb after
+    this.climbCd -= dt;
+    this.climbing = tgt.groundY > k.groundY + 0.5 || (k.airborne && this.climbing);
+    if (this.climbing && !afraid) {
+      fwd = speed; side = 0;
+      if (!k.airborne && this.climbCd <= 0 && k.staggerT <= 0 && game.wallNear(k, 1.15)?.top) { if (k.jump(1.2)) { this.climbCd = 1.6; game.onJump(k); } }
+    }
     this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me);
+    if (game.training?.drill === 'passive') { this.cooldown = 1; this.threatSeen = true; this.kickCd = 5; }
 
     // ---------- reading the opponent: evade, guard or (rarely) deflect
     const tw = tgt.weapon;

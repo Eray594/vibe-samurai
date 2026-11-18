@@ -218,8 +218,9 @@ export class PlayerController {
 
   /** Called while the player is down: only the camera moves. */
   lookOnly(frame) {
-    this.yaw -= frame.dx * SENS_LOOK;
-    this.pitch = clamp(this.pitch - frame.dy * SENS_LOOK, -0.9, 0.55);
+    const sl = SENS_LOOK * this.game.settings.sens;
+    this.yaw -= frame.dx * sl;
+    this.pitch = clamp(this.pitch - frame.dy * sl, -0.9, 0.55);
     this.runner.cancel();
     this.finisher = null;
     this.k.attackPhase = null;
@@ -343,9 +344,9 @@ export class PlayerController {
     // ---------- camera
     if (this.fixedYaw) { /* set from outside */ }
     else if (!freeSwing) {
-      this.yaw -= dx * SENS_LOOK;
-      this.pitch = clamp(this.pitch - dy * SENS_LOOK, -0.9, 0.55);
-    } else this.yaw -= dx * SENS_LOOK * 0.28;
+      this.yaw -= dx * SENS_LOOK * game.settings.sens;
+      this.pitch = clamp(this.pitch - dy * SENS_LOOK * game.settings.sens, -0.9, 0.55);
+    } else this.yaw -= dx * SENS_LOOK * game.settings.sens * 0.28;
     k.atk = this.runner.a;
 
     // ---------- lock-on
@@ -457,8 +458,8 @@ export class PlayerController {
       this.reachAdd = clamp(this.reachAdd - wheel * 0.0009, -0.18, 0.34);
       this.reachAdd *= Math.exp(-dt * 1.6);
       const r = this.handRaw;
-      r.x = clamp(r.x + dx * SENS_HAND, -0.62, 0.66);
-      r.y = clamp(r.y - dy * SENS_HAND, -0.28, 1.0);
+      r.x = clamp(r.x + dx * SENS_HAND * game.settings.sens, -0.62, 0.66);
+      r.y = clamp(r.y - dy * SENS_HAND * game.settings.sens, -0.28, 1.0);
       r.z = -(0.46 + this.reachAdd - 0.38 * Math.max(0, Math.abs(r.x) - 0.25) - 0.22 * Math.max(0, r.y - 0.7));
       this.runner.hand.lerp(r, dampFactor(32, dt));
       it.hand.copy(this.runner.hand);
@@ -474,7 +475,7 @@ export class PlayerController {
       const iaiKey = inp.down('KeyB') && def.type === 'sword' && this.iaiCd <= 0 && !wantGuard && !k.airborne;
       if (iaiKey && !this.runner.busy) {
         if (this.iaiCharge === 0) game.audio.tick?.();
-        this.iaiCharge = Math.min(1, this.iaiCharge + dt / 0.75);
+        this.iaiCharge = Math.min(1, this.iaiCharge + dt / (0.75 * (k.isPlayer ? game.perk.iai : 1)));
         if (this.iaiCharge >= 1 && !this.iaiReady) { this.iaiReady = true; game.onIaiReady?.(k); }
         this.buffer = 0;
       } else if (this.iaiCharge > 0) {

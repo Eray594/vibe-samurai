@@ -14,7 +14,7 @@ export class AudioFX {
     if (!AC) return;
     const ctx = this.ctx = new AC();
     this.master = ctx.createGain();
-    this.master.gain.value = 0.75;
+    this.master.gain.value = 0.75 * (this.volume ?? 1);
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.ratio.value = 5; comp.attack.value = 0.003; comp.release.value = 0.2;
     this.master.connect(comp).connect(ctx.destination);
@@ -317,6 +317,11 @@ export class AudioFX {
   }
 
   /** Soft click for lock-on. */
+  setVolume(v) {
+    this.volume = v;
+    if (this.master) this.master.gain.setTargetAtTime(0.75 * v, this.ctx.currentTime, 0.05);
+  }
+
   /** Steady rain on gravel and roof tiles. */
   setRain(on) {
     if (!this.ctx) { this.rainWanted = on; return; }

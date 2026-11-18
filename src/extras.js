@@ -142,8 +142,8 @@ export class Standoff {
     // both hold the draw stance, facing each other; only the camera moves
     const pp = P.getPos(_a), ep = E.getPos(_b);
     const yawP = Math.atan2(-(ep.x - pp.x), -(ep.z - pp.z));
-    ctl.yaw -= frame.dx * 0.0022;
-    ctl.pitch = clamp(ctl.pitch - frame.dy * 0.0022, -0.9, 0.55);
+    ctl.yaw -= frame.dx * 0.0022 * g.settings.sens;
+    ctl.pitch = clamp(ctl.pitch - frame.dy * 0.0022 * g.settings.sens, -0.9, 0.55);
     ctl.faceYaw = yawP;
     for (const [k, runner, yaw] of [[P, ctl.runner, yawP], [E, E.brain.runner, yawP + Math.PI]]) {
       const it = k.intent;
@@ -228,16 +228,18 @@ export class Perks {
   /** Back to a fresh run: nothing taken, the player as his skin made him. */
   reset() {
     const g = this.game;
-    g.perk = { dmg: 1, deflect: 1, kunai: 1, postureDmg: 1, lifesteal: false };
+    const own = (key) => !!g.progress?.has(key);       // bought in the dōjō: part of the base values
+    g.perk = { dmg: 1, deflect: 1, kunai: own('kunai') ? 2 : 1, postureDmg: 1, lifesteal: false, iai: own('iai') ? 0.66 : 1 };
     this.taken = [];
     this.close();
     if (g.player) {
       const skin = SKINS[g.skin];
-      g.player.postureMax = 1.25;
+      g.player.postureMax = 1.25 * (own('stand') ? 1.15 : 1);
+      g.player.regenMul = own('calm') ? 1.3 : 1;
       g.player.speedMul = skin.speed;
       g.player.inj.armor = skin.prot;
     }
-    if (g.ctl) g.ctl.maxHeals = 3;
+    if (g.ctl) { g.ctl.maxHeals = own('heal') ? 4 : 3; g.ctl.heals = Math.max(g.ctl.heals, Math.min(g.ctl.heals + 1, g.ctl.maxHeals)); }
   }
 
   offer() {
@@ -320,7 +322,7 @@ export class Replay {
 
   /** Ask for a replay centred on `fighter`, once the aftermath has been recorded too. */
   trigger(fighter) {
-    if (!this.enabled || this.active || this.pendingT > 0) return;
+    if (!this.enabled || this.active || this.pendingT > 0 || this.game.mode === 'training') return;
     this.focus = fighter;
     this.pendingT = 0.9;
   }

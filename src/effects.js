@@ -240,6 +240,7 @@ export class Effects {
 
   /** Droplets that streak along their velocity + a puff of mist. */
   blood(point, dir, count, force = 1) {
+    if (this.noBlood) return;
     const P = this.chunks;
     count = Math.min(220, Math.round(count));
     for (let k = 0; k < count; k++) {
@@ -264,6 +265,7 @@ export class Effects {
 
   /** Chunks of flesh/armour flying off a severed limb. */
   gore(point, dir, count) {
+    if (this.noBlood) return;
     const P = this.chunks;
     for (let k = 0; k < count; k++) {
       const i = P.alloc();
@@ -281,6 +283,7 @@ export class Effects {
 
   /** Arterial spray from a stump: pulsing jet for a few seconds. */
   addSpurt(getPos, getDir, duration = 5) {
+    if (this.noBlood) return;
     this.spurts.push({ getPos, getDir, t: 0, duration, acc: 0 });
     if (this.spurts.length > 12) this.spurts.shift();
   }
@@ -333,6 +336,7 @@ export class Effects {
   }
 
   decal(x, z, size) {
+    if (this.noBlood) return;
     const i = this.decalNext;
     this.decalNext = (this.decalNext + 1) % this.decalN;
     _q.setFromAxisAngle(Y, Math.random() * Math.PI * 2);
