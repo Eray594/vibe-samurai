@@ -188,12 +188,14 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
     for (const name of [...(ms?.combo || [undefined]), ms?.sprint, ms?.air, ms?.counter, ...(ms?.ai || [undefined])]) if (!ATTACKS[name]) missing.push(`${w}: ${name}`);
   }
   check('Jede Waffe hat für jede Lage einen Hieb (Kombo, Sprint, Luft, Konter, KI)', missing.length === 0, missing);
+  g.composer.render = () => {};                 // real pictures were switched back on above; not needed here, and slow
   g.setMode('duel'); g.standoff.cancel();
   let bad = '';
   for (const w of WEAPON_ORDER) {
     const e = dummy('ronin', V(0, 0, -1.6)); fresh(0, 0); g.setPlayerWeapon(w); ctl.lock = e;
     try { ctl.counterT = 0.7; g.input.lmb = true; g.input.lmbPressed = true; step(3); g.input.lmb = false; step(90); } catch (err) { bad = bad || `${w}: ${err.message}`; }
   }
+  g.composer.render = realRender;
   g.setPlayerWeapon('katana');
   check('Konter direkt nach einer Abwehr geht mit jeder Waffe', bad === '', bad);
 }

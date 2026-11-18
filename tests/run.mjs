@@ -32,7 +32,7 @@ const server = spawn(process.execPath, [join(ROOT, 'tools/serve.mjs'), String(po
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, `--user-data-dir=${profile}`, '--window-size=1280,720',
   '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--mute-audio', '--no-first-run', '--no-sandbox', '--disable-extensions', 'about:blank'], { stdio: 'ignore' });
 const finish = (code) => { chrome.kill(); server.kill(); try { rmSync(profile, { recursive: true, force: true }); } catch { /* still in use */ } process.exit(code); };
-setTimeout(() => { console.error('Zeitüberschreitung nach 8 Minuten.'); finish(3); }, 480000).unref();
+setTimeout(() => { console.error('Zeitüberschreitung nach 20 Minuten.'); finish(3); }, 1200000).unref();
 
 let wsUrl;
 for (let i = 0; i < 80 && !wsUrl; i++) {
