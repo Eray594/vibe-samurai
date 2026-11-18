@@ -34,8 +34,10 @@ und Safari nutzen dieselben Web-Standards).
 
 ## So spielt man – in 60 Sekunden
 
-1. Spiel starten (siehe oben) und **ins Bild klicken** – damit wird die Maus gefangen. `Esc` gibt sie
-   wieder frei, z. B. um oben in der Leiste Gegnertyp oder Modus zu wählen.
+1. Spiel starten (siehe oben) und im **Hauptmenü einen Modus wählen**: *Überleben* (Wellen, die immer
+   härter werden) oder *Freies Spiel* (der Hof als Sandkasten). *Verteidigung* ist in Arbeit. Mit der
+   Wahl wird die Maus gefangen; `Esc` gibt sie wieder frei, z. B. für die Leiste oben. Der Knopf
+   **Hauptmenü** in der Leiste führt zurück zur Modus-Wahl.
 2. Mit **WASD** bewegen, mit der **Maus** umsehen. `R` holt einen Gegner in den Hof, `Tab` erfasst ihn.
 3. **Linksklick** schlägt zu – mehrfach klicken ergibt eine Kombo, gedrückt halten einen schweren Hieb.
 4. **Rechtsklick** hält die Deckung. Wer sie erst im letzten Moment hebt, **wehrt ab**: die Klinge des

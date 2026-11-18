@@ -355,6 +355,27 @@ class Game {
     this.callout(up(skin.name), null, 'small');
   }
 
+  /** The mode selection is up: nothing has been picked yet, or the player went back to it. */
+  get mainMenu() { return !this.started && !this.input.locked; }
+
+  /** Main menu: pick a mode and go. */
+  play(mode) {
+    if (!MODES[mode]) return;
+    this.started = false;                  // so a duel opens with the draw once the mouse is caught
+    this.setMode(mode);
+    document.getElementById('overlay').classList.add('hidden');
+    this.audio.init();
+    this.input.lock();
+  }
+
+  /** Back to the mode selection. */
+  openMainMenu() {
+    this.started = false;
+    this.menu.toggle(false);
+    document.getElementById('overlay').classList.remove('hidden');
+    if (document.pointerLockElement) document.exitPointerLock();
+  }
+
   setMode(mode) {
     if (this.mode === 'versus' && mode !== 'versus') this.versus.stop();
     this.mode = mode;
@@ -1575,7 +1596,8 @@ class Game {
       slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'), stamina: $('stamina-fill'), staminaBox: $('stamina'),
     };
     const start = () => { this.audio.init(); this.input.lock(); };
-    $('btn-start').addEventListener('click', start);
+    for (const b of document.querySelectorAll('#mode-cards .mode-card')) b.addEventListener('click', () => { if (!b.disabled) this.play(b.dataset.mode); });
+    $('btn-main-settings').addEventListener('click', () => this.menu.toggle(true));
     this.canvas.addEventListener('click', start);
     document.addEventListener('pointerlockchange', () => {
       $('overlay').classList.toggle('hidden', this.input.locked || this.started);
@@ -1591,6 +1613,7 @@ class Game {
     btn('btn-slow', () => this.toggleSlowmo());
     btn('btn-weather', () => this.nextWeather());
     btn('btn-menu', () => this.menu.toggle());
+    btn('btn-main', () => this.openMainMenu());
     btn('btn-quality', () => this.callout('GRAFIK: ' + up(this.quality.cycle()), null, 'small'));
 
     const wb = $('weapon-buttons');
@@ -1849,12 +1872,13 @@ class Game {
     this.quality.update(rawDt);
     const realDt = Math.min(rawDt, 1 / 20);
     const frame = this.input.consume();
-    this.handleKeys(frame);
+    if (!this.mainMenu) this.handleKeys(frame);
 
     let target = this.slowmo ? 0.3 : 1;
     if (this.slowT > 0) { this.slowT -= realDt; target = Math.min(target, 0.2); }
     if (this.hitStopT > 0) { this.hitStopT -= realDt; this.timeScale = 0.05; }
     else this.timeScale += (target - this.timeScale) * Math.min(1, realDt * 12);
+    if (this.mainMenu) this.timeScale = 0;      // the yard holds its breath behind the mode selection
     const dt = realDt * this.timeScale;
     const frozen = this.timeScale < 0.1;
     const P = this.player;

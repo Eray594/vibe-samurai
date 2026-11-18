@@ -36,7 +36,8 @@
     <button id="btn-quality" title="Grafikqualität: Auto passt sich an, um die Bildrate zu halten"><b id="quality-label">Auto</b></button>
     <button id="btn-slow" title="Zeitlupe (Z)">Zeitlupe <kbd>Z</kbd></button>
     <button id="btn-reset" title="Hof zurücksetzen (Backspace)">Reset <kbd>⌫</kbd></button>
-    <button id="btn-menu" title="Einstellungen und Dōjō (I)">Menü <kbd>I</kbd></button>
+    <button id="btn-menu" title="Einstellungen und Dōjō (I)">Dōjō <kbd>I</kbd></button>
+    <button id="btn-main" title="Zurück zum Hauptmenü: Modus wählen">Hauptmenü</button>
   </div>
 </div>
 
@@ -96,16 +97,28 @@
 <div id="callouts"></div>
 <div id="kanji"></div>
 
+<!-- Hauptmenü -->
 <div id="overlay">
   <div class="card">
     <div class="seal">侍</div>
     <h1>VIBE<span>SAMURAI</span></h1>
-    <p class="sub">Samurai-Sandbox · Physik-Schwertkampf</p>
-    <p>Jede Klinge hat echtes Gewicht. <b>Blocke</b> mit der rechten Maustaste – hebst du die Deckung
-       erst im letzten Moment, <b>wehrst du ab</b> und brichst die Haltung des Gegners.<br>
-       Ist sie gebrochen: <b>Todesstoß</b>.</p>
-    <button id="btn-start">Klicken zum Kämpfen</button>
-    <p class="hint">Esc gibt die Maus frei · H blendet die Steuerung ein/aus</p>
+    <p class="sub">Physik-Schwertkampf · Modus wählen</p>
+    <div id="mode-cards">
+      <button class="mode-card" data-mode="survival">
+        <i>生</i><b>Überleben</b>
+        <span>Welle um Welle, immer härter. Zwischen den Wellen wählst du Verbesserungen. Wie weit kommst du?</span>
+      </button>
+      <button class="mode-card soon" data-mode="defense" disabled>
+        <i>守</i><b>Verteidigung</b><em>in Arbeit</em>
+        <span>Halte deine Stellung: Mit verdientem Geld Soldaten anheuern und Fallen bauen, bevor die nächste Welle kommt.</span>
+      </button>
+      <button class="mode-card" data-mode="duel">
+        <i>道</i><b>Freies Spiel</b>
+        <span>Der Hof als Sandkasten: Duell, Gefecht, Chaos, 2 Spieler und Training – mit <kbd>M</kbd> wechseln.</span>
+      </button>
+    </div>
+    <button id="btn-main-settings">Einstellungen &amp; Dōjō</button>
+    <p class="hint"><b>RMB</b> blocken · im letzten Moment: Abwehr · <b>LMB</b> Hieb · Esc gibt die Maus frei · H zeigt die Steuerung</p>
   </div>
 </div>
 <div id="death"><div id="death-cause">NIEDERGESTRECKT</div><small id="death-sub">Neuer Versuch …</small></div>

@@ -8,6 +8,26 @@ g.renderer.setAnimationLoop(null);
 g.clock.getDelta = () => 1 / 60;
 const realRender = g.composer.render.bind(g.composer);
 g.composer.render = () => {};
+// --- Hauptmenü (vor allem anderen: so sieht es der Spieler beim Laden) ---
+{
+  const ov = document.getElementById('overlay'), cards = [...document.querySelectorAll('#mode-cards .mode-card')];
+  const card = (m) => cards.find((c) => c.dataset.mode === m);
+  check('Hauptmenü ist beim Laden sichtbar', !ov.classList.contains('hidden') && g.mainMenu);
+  check('Hauptmenü bietet Überleben, Verteidigung und Freies Spiel', card('survival') && card('defense') && card('duel'), cards.map((c) => c.dataset.mode));
+  check('Verteidigung ist noch gesperrt', card('defense').disabled);
+  const t0 = g.time; for (let i = 0; i < 30; i++) g.frame();
+  check('Hinter dem Hauptmenü steht der Hof still', g.time === t0, [t0, g.time]);
+  card('defense').click();
+  check('Klick auf gesperrten Modus tut nichts', !ov.classList.contains('hidden') && g.mode === 'duel', g.mode);
+  card('survival').click();
+  check('Klick auf Überleben startet Überleben', g.mode === 'survival' && ov.classList.contains('hidden') && g.wave === 1, [g.mode, g.wave]);
+  g.input.locked = true; g.started = true; for (let i = 0; i < 30; i++) g.frame();
+  check('Nach der Wahl läuft das Spiel', g.time > t0, g.time);
+  document.getElementById('btn-main').click(); g.input.locked = false;
+  check('Hauptmenü-Knopf führt zurück zur Modus-Wahl', !ov.classList.contains('hidden') && g.mainMenu);
+  card('duel').click();
+  check('Freies Spiel startet im Duell', g.mode === 'duel' && ov.classList.contains('hidden'), g.mode);
+}
 g.input.locked = true; g.started = true;
 try { localStorage.clear(); } catch { /* no storage */ }
 g.progress.wipe();
