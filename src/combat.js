@@ -17,10 +17,21 @@ export const POSES = {
   carry: pose(L(0.26, 0.02, 0.05), D(0.15, -0.45, -1)),      // waki: blade trailing low while running
   broken: pose(L(0.28, 0.0, 0.25), D(0.5, -0.8, 0.3)),       // guard smashed, blade hanging
   recoil: pose(L(0.32, 0.55, 0.1), D(0.6, 0.8, -0.2)),       // blade knocked wide
+  jodan: pose(L(0.06, 0.74, 0.08), D(0.05, 0.9, -0.5)),      // high stance: blade above the head
+  gedan: pose(L(0.1, 0.02, 0.32), D(0.12, -0.5, 1)),         // low stance: point at the knees
+  iai: pose(L(-0.27, 0.08, 0.1), D(-0.2, -0.22, -1)),        // sheathed at the left hip, coiled for the draw
+  bind: pose(L(0.0, 0.52, 0.5), D(-0.62, 0.75, 0.15)),       // blades locked, pushing
 };
 export const GUARD = POSES.guard.hand;
 export const BLOCK_EDGE = L(0, 0.25, 1).normalize();
 export const guardFor = (def) => (def.type === 'polearm' ? POSES.guardPole : POSES.guard);
+
+/** Kamae: low is quick and light, high is slow and crushing. Index 1 (chūdan) is the default. */
+export const STANCES = [
+  { key: 'gedan', name: 'Gedan (tief)', wind: 0.76, power: 0.9, move: 1.08, posture: 0.85, pose: POSES.gedan },
+  { key: 'chudan', name: 'Chūdan', wind: 1, power: 1, move: 1, posture: 1, pose: null },
+  { key: 'jodan', name: 'Jōdan (hoch)', wind: 1.24, power: 1.28, move: 0.92, posture: 1.4, pose: POSES.jodan },
+];
 
 /** A cut: where the hands and the blade are when coiled, and where they stop. */
 const cut = (label, wind, windDir, end, endDir, extra = {}) => {
@@ -35,12 +46,14 @@ export const ATTACKS = {
   shomen: cut('Shōmen', L(0.02, 0.78, 0.02), D(0, 0.75, -1), L(0.02, 0.1, 0.55), D(0, -0.15, 1)),              // straight down the centre line
   yokoR: cut('Yoko', L(0.42, 0.3, 0.12), D(1, 0.1, -0.5), L(-0.3, 0.28, 0.42), D(-0.9, 0, 0.6)),               // level, right → left
   yokoL: cut('Yoko', L(-0.4, 0.3, 0.12), D(-1, 0.1, -0.5), L(0.32, 0.28, 0.42), D(0.9, 0, 0.6)),
-  ashi: cut('Ashi-Barai', L(0.4, 0.35, 0.1), D(0.9, 0.5, -0.3), L(-0.25, -0.05, 0.5), D(-0.7, -0.75, 0.7)),     // at the legs
+  ashi: cut('Ashi-Barai', L(0.4, 0.35, 0.1), D(0.9, 0.5, -0.3), L(-0.25, -0.05, 0.5), D(-0.7, -0.75, 0.7), { low: true }),     // at the legs: jump it
   age: cut('Kiriage', L(0.3, -0.05, 0.15), D(0.6, -0.8, -0.2), L(-0.15, 0.6, 0.45), D(-0.5, 0.8, 0.5)),         // rising
   // kaiten: the blade is held out level and the whole body turns once — cuts everyone around
   spin: cut('Kaiten', L(0.5, 0.3, 0.1), D(1, 0.1, -0.4), L(0.6, 0.3, 0.25), D(1, 0, 0.15), { spin: true, strikeDur: 0.46, edge: L(0, 0, 1) }),
   // nukiuchi: a drawing cut while rushing straight past the opponent
   nuki: cut('Nukiuchi', L(0.36, 0.26, 0.1), D(1, 0.05, -0.35), L(-0.32, 0.3, 0.4), D(-0.9, 0.05, 0.5), { pass: true }),
+  // iai: the blade leaves the scabbard already cutting, from the left hip up across the body
+  iai: cut('Iai', L(-0.3, 0.1, 0.06), D(-0.3, -0.2, -1), L(0.42, 0.5, 0.42), D(0.9, 0.35, 0.45), { pass: true }),
   tsuki: cut('Tsuki', L(0.12, 0.22, 0.08), D(0, 0.05, 1), L(0.03, 0.3, 0.78), D(0, 0.05, 1), { thrust: true }),
   tsukiLow: cut('Tsuki', L(0.12, 0.16, 0.08), D(0, -0.1, 1), L(0.03, 0.12, 0.78), D(0, -0.22, 1), { thrust: true }),
 };

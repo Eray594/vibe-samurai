@@ -72,6 +72,12 @@ export const WEAPONS = {
     pd: { kp: 0, kd: 0, maxF: 0, rkp: 0, rkd: 0, maxT: 0 },
     damage: 0.3, knock: 0.3, launchUp: 0, reach: 0, moveMul: 1, postureDmg: 0.5,
   },
+  arrow: {
+    key: 'arrow', name: 'Pfeil', type: 'sword', thrown: true, arrow: true,
+    bladeLen: 0.09, bladeW: 0.024, gripLen: 0.66, mass: 0.14, ycom: -0.2,
+    pd: { kp: 0, kd: 0, maxF: 0, rkp: 0, rkd: 0, maxT: 0 },
+    damage: 0.62, knock: 0.3, launchUp: 0, reach: 0, moveMul: 1, postureDmg: 0.6,
+  },
 };
 export const WEAPON_ORDER = ['katana', 'wakizashi', 'nodachi', 'yari', 'naginata', 'kanabo'];
 
@@ -341,6 +347,8 @@ export class Weapon {
 
   attach() {
     this.attached = true;
+    this.thrower = null;
+    this.thrownAt = -9;
     this.applyGroup();
     this.body.angularDamping = 0.04;
   }

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { clamp, dampFactor, angleLerp } from './physics.js';
-import { POSES, guardFor, BLOCK_EDGE, GUARD, MOVESETS, AttackRunner, DEFLECT_WINDOW, spinYaw } from './combat.js';
+import { POSES, guardFor, BLOCK_EDGE, GUARD, MOVESETS, AttackRunner, DEFLECT_WINDOW, spinYaw, STANCES } from './combat.js';
 
 const SENS_LOOK = 0.0022;
 const SENS_HAND = 0.0027;
@@ -65,6 +65,58 @@ export class Input {
 }
 
 /**
+ * Second player: a gamepad (preferred) or the right-hand side of the keyboard, presented through the
+ * same interface as `Input` so the same controller class can drive a fighter with it.
+ *   stick / arrows  move        A / Enter       jump        B / -          step
+ *   X, RB / ,       cut         LB / .          guard       Y / #          kick
+ *   LT  iai (hold)  RT  kunai   D-pad up  stance   D-pad down  grab   D-pad ←→  weapon
+ */
+const PAD_BUTTONS = { 0: 'Space', 1: 'ShiftLeft', 3: 'KeyF', 6: 'KeyB', 7: 'KeyQ', 10: 'KeyX', 12: 'KeyL', 13: 'KeyG', 14: 'WeaponPrev', 15: 'WeaponNext' };
+const KEYS_P2 = {
+  ArrowUp: 'KeyW', ArrowDown: 'KeyS', ArrowLeft: 'KeyA', ArrowRight: 'KeyD',
+  Enter: 'Space', Numpad0: 'Space', Minus: 'ShiftLeft', Slash: 'ShiftLeft', Numpad3: 'ShiftLeft',
+  Backslash: 'KeyF', Numpad5: 'KeyF', Numpad7: 'KeyL', Numpad9: 'KeyG', Numpad4: 'WeaponPrev', Numpad6: 'WeaponNext',
+};
+const LMB_P2 = ['Comma', 'Numpad1'], RMB_P2 = ['Period', 'Numpad2'];
+export class PadInput {
+  constructor(keyboard) {
+    this.kb = keyboard;
+    this.keys = new Set();
+    this.lmb = false; this.rmb = false;
+    this.locked = true;
+    this.connected = false;
+  }
+  down(code) { return this.keys.has(code); }
+  consume() {
+    const now = new Set();
+    let lmb = false, rmb = false;
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let pad = null;
+    for (const p of pads) if (p && p.connected) { pad = p; break; }
+    this.connected = !!pad;
+    if (pad) {
+      const x = pad.axes[0] || 0, y = pad.axes[1] || 0;
+      if (y < -0.35) now.add('KeyW');
+      if (y > 0.35) now.add('KeyS');
+      if (x < -0.35) now.add('KeyA');
+      if (x > 0.35) now.add('KeyD');
+      const b = (i) => !!pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.5);
+      for (const i in PAD_BUTTONS) if (b(+i)) now.add(PAD_BUTTONS[i]);
+      lmb = b(2) || b(5);
+      rmb = b(4);
+    }
+    for (const code in KEYS_P2) if (this.kb.keys.has(code)) now.add(KEYS_P2[code]);
+    lmb = lmb || LMB_P2.some((c) => this.kb.keys.has(c));
+    rmb = rmb || RMB_P2.some((c) => this.kb.keys.has(c));
+    const pressed = new Set();
+    for (const c of now) if (!this.keys.has(c)) pressed.add(c);
+    const r = { dx: 0, dy: 0, wheel: 0, pressed, lmbPressed: lmb && !this.lmb, rmbPressed: rmb && !this.rmb, mmbPressed: false };
+    this.keys = now; this.lmb = lmb; this.rmb = rmb;
+    return r;
+  }
+}
+
+/**
  * The player's samurai. The camera orbits freely; the body turns into the direction of travel,
  * towards the locked target, or into the cut.
  *   LMB  cut (chain for combos, hold to charge)      RMB  guard (tap just in time = deflect)
@@ -96,6 +148,60 @@ export class PlayerController {
     this.heals = 3;
     this.mode = 'guard';
     this.sprintAttack = false;
+    this.stance = 1;          // index into STANCES: 0 low, 1 middle, 2 high
+    this.stanceCd = 0;
+    this.iaiCharge = 0;
+    this.iaiCd = 0;
+    this.iaiReady = false;
+    this.maxHeals = 3;
+    this.fixedYaw = false;    // two-player duel: the camera is not ours to turn
+  }
+
+  /** Where the hands rest between cuts: depends on the stance (polearms have only the one). */
+  homePose(def) {
+    const st = STANCES[this.stance];
+    return st.pose && def.type !== 'polearm' ? st.pose : guardFor(def);
+  }
+
+  setStance(i) {
+    i = clamp(i, 0, STANCES.length - 1);
+    if (i === this.stance) return;
+    this.stance = i;
+    if (this.k.isPlayer) this.game.callout(STANCES[i].name.toUpperCase(), null, 'small');
+    this.game.audio.tick?.();
+  }
+
+  /** Rush straight at / through the aim, the cut landing on the way. Used by the dash-cut and the draw. */
+  rush(minSp = 6) {
+    const k = this.k;
+    if (this.aim) { const ap = this.aim.getPos(_q), me = k.getPos(_p); this.faceYaw = Math.atan2(-(ap.x - me.x), -(ap.z - me.z)); }
+    k.dashCd = 0;
+    let d0 = 3;
+    if (this.aim) { const ap = this.aim.getPos(_q), me = k.getPos(_p); d0 = Math.hypot(ap.x - me.x, ap.z - me.z); }
+    if (k.dash(_v.set(-Math.sin(this.faceYaw), 0, -Math.cos(this.faceYaw)))) {
+      // speed chosen so the blade crosses the opponent in the middle of the cut, then carry on past
+      const a = this.runner.a, sp = clamp((d0 - 0.9) / (a.windDur + a.strikeDur * 0.5), minSp, 16);
+      k.core.velocity.x = -Math.sin(this.faceYaw) * sp;
+      k.core.velocity.z = -Math.cos(this.faceYaw) * sp;
+      k.dashT = 0.32; k.ghostT = 0.4; k.iframeT = 0.44;
+    }
+  }
+
+  /** Iai: the charged draw. `c` is the charge 0..1. */
+  startIai(c, moveX, moveZ, moving) {
+    const k = this.k, def = k.weapon.def;
+    this.buffer = 0;
+    this.sprintAttack = false;
+    this.comboI = 0;
+    this.finisher = null;
+    k.postureMul = 1.5;
+    this.runner.start('iai', def, { wind: 0.06, strike: def.swing.strike * 0.85, power: 1.35 + 0.55 * c, heavy: true }).home = this.homePose(def);
+    const fx = moving ? moveX : -Math.sin(this.yaw), fz = moving ? moveZ : -Math.cos(this.yaw);
+    this.aim = this.pickAim(fx, fz);
+    if (!this.aim) this.faceYaw = Math.atan2(-fx, -fz);
+    this.rush(9);
+    this.iaiCd = 2.2;
+    this.game.onIai?.(k, c);
   }
 
   reset() {
@@ -105,7 +211,9 @@ export class PlayerController {
     this.lock = null;
     this.buffer = 0;
     this.comboI = 0;
-    this.heals = 3;
+    this.heals = this.maxHeals;
+    this.iaiCharge = 0;
+    this.iaiCd = 0;
   }
 
   /** Called while the player is down: only the camera moves. */
@@ -171,9 +279,14 @@ export class PlayerController {
       return;
     }
     const ms = MOVESETS[def.key];
+    const st = STANCES[this.stance];
     let name, o = {};
     this.sprintAttack = false;
-    if (this.counterT > 0) {
+    k.postureMul = st.posture;
+    if (k.slideT > 0) {
+      // out of the slide: a cut at the legs on the way past
+      name = 'ashi'; o = { wind: 0.08, power: 1.35 }; this.comboI = 0;
+    } else if (this.counterT > 0) {
       // riposte straight out of a deflection: no wind-up to speak of, and it bites deep
       name = ms.counter; o = { wind: 0.07, power: 1.5, heavy: true };
       this.counterT = 0; this.comboI = 1;
@@ -187,8 +300,12 @@ export class PlayerController {
       name = ms.combo[this.comboI % ms.combo.length];
       if (this.comboI > 0) o.wind = def.swing.wind * Math.max(0.55, 0.85 - 0.07 * this.comboI);   // the chain speeds up
       this.comboI++;
+      // the stance colours the plain cuts: low is quick and light, high slow and heavy
+      o.wind = (o.wind ?? def.swing.wind) * st.wind;
+      o.power = 1.15 * st.power;
+      if (st.power > 1.1) o.heavy = true;
     }
-    this.runner.start(name, def, o);
+    this.runner.start(name, def, o).home = this.homePose(def);
     // aim: lock target, else whoever stands in front of the stick / camera
     const fx = moving ? moveX : -Math.sin(this.yaw), fz = moving ? moveZ : -Math.cos(this.yaw);
     this.aim = this.pickAim(fx, fz);
@@ -209,20 +326,7 @@ export class PlayerController {
         }
       }
     }
-    if (name === 'nuki') {
-      // rush straight through the opponent, cutting on the way past
-      if (this.aim) { const ap = this.aim.getPos(_q), me = k.getPos(_p); this.faceYaw = Math.atan2(-(ap.x - me.x), -(ap.z - me.z)); }
-      k.dashCd = 0;
-      let d0 = 3;
-      if (this.aim) { const ap = this.aim.getPos(_q), me = k.getPos(_p); d0 = Math.hypot(ap.x - me.x, ap.z - me.z); }
-      if (k.dash(_v.set(-Math.sin(this.faceYaw), 0, -Math.cos(this.faceYaw)))) {
-        // speed chosen so the blade crosses the opponent in the middle of the cut, then carry on past
-        const a = this.runner.a, sp = clamp((d0 - 0.9) / (a.windDur + a.strikeDur * 0.5), 6, 16);
-        k.core.velocity.x = -Math.sin(this.faceYaw) * sp;
-        k.core.velocity.z = -Math.cos(this.faceYaw) * sp;
-        k.dashT = 0.32; k.ghostT = 0.4; k.iframeT = 0.44;
-      }
-    }
+    if (name === 'nuki') this.rush();       // rush straight through the opponent, cutting on the way past
   }
 
   update(dt, frame) {
@@ -237,10 +341,12 @@ export class PlayerController {
     const freeSwing = this.free && inp.lmb && armed && !broken && !this.finisher;
 
     // ---------- camera
-    if (!freeSwing) {
+    if (this.fixedYaw) { /* set from outside */ }
+    else if (!freeSwing) {
       this.yaw -= dx * SENS_LOOK;
       this.pitch = clamp(this.pitch - dy * SENS_LOOK, -0.9, 0.55);
     } else this.yaw -= dx * SENS_LOOK * 0.28;
+    k.atk = this.runner.a;
 
     // ---------- lock-on
     if (pressed.has('Tab') || frame.mmbPressed) {
@@ -250,10 +356,14 @@ export class PlayerController {
     if (this.lock && !this.valid(this.lock)) this.lock = this.findTarget(10);
     if (this.lock && wheel && !freeSwing) this.lock = this.findTarget(18, this.lock) || this.lock;
     const me = k.getPos(_p).clone();
-    if (this.lock) {
+    if (this.lock && !this.fixedYaw) {
       const lp = this.lock.getPos(_q);
       this.yaw = angleLerp(this.yaw, Math.atan2(-(lp.x - me.x), -(lp.z - me.z)), dampFactor(4.5, dt));
     }
+    // ---------- stance: mouse wheel (when it is not switching targets) or L
+    this.stanceCd -= dt;
+    if (pressed.has('KeyL')) this.setStance((this.stance + 1) % STANCES.length);
+    else if (wheel && !this.lock && !freeSwing && this.stanceCd <= 0) { this.setStance(this.stance + (wheel < 0 ? 1 : -1)); this.stanceCd = 0.18; }
 
     // ---------- movement input, relative to the camera
     let mf = 0, ms = 0;
@@ -267,23 +377,44 @@ export class PlayerController {
     const mx = (-sy * mf + cy * ms) / len, mz = (-cy * mf - sy * ms) / len;   // unit move direction (world)
 
     // ---------- slip-step (Shift) & jump (Space)
+    // ---------- locked blade on blade: all there is to do is push
+    if (k.bound) {
+      this.runner.cancel();
+      this.finisher = null;
+      this.mode = 'bind';
+      it.mode = 'guard'; it.bladeDir = null; it.edgeHint = null; it.edgeExact = false; it.power = 1.6;
+      this.runner.rest(dt, it, POSES.bind, 16);
+      it.move.set(0, 0, 0);
+      const o = game.bind.other(k);
+      if (o) { const op = o.getPos(_q); this.faceYaw = Math.atan2(-(op.x - me.x), -(op.z - me.z)); }
+      it.yaw = this.faceYaw;
+      k.attackPhase = null; k.atk = null; k.sprinting = false;
+      if (frame.lmbPressed) game.bind.push(k);
+      return;
+    }
     if ((pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();
       if (k.dash(d)) {
         if (this.runner.phase !== 'strike') this.runner.cancel();
         this.finisher = null;
+        game.onDodge(k, d, this);
       }
     }
+    if (pressed.has('KeyX') && k.sprinting && !broken) {
+      if (k.startSlide(_v.set(mx, 0, mz))) { this.runner.cancel(); game.onSlide(k); }
+    }
     if (pressed.has('Space') && !broken) {
-      if (k.jump()) game.onJump(k);
+      if (k.airborne) game.tryWallJump(k);
+      else if (k.jump(game.wallRunBoost(k))) game.onJump(k);
     }
     const shift = inp.down('ShiftLeft') || inp.down('ShiftRight');
-    const wantGuard = inp.rmb && armed && !broken && !this.finisher;
+    const wantGuard = inp.rmb && armed && !broken && !this.finisher && !k.holding;
     if (frame.rmbPressed) {
       // mashing the guard shrinks the deflection window
-      k.deflectWindow = this.guardPressT < 0.4 ? DEFLECT_WINDOW * 0.45 : DEFLECT_WINDOW;
+      k.deflectWindow = (this.guardPressT < 0.4 ? DEFLECT_WINDOW * 0.45 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1);
       this.guardPressT = 0;
     }
+    this.iaiCd -= dt;
     this.guardPressT += dt;
     this.counterT -= dt;
     this.spinTo = null;
@@ -308,6 +439,16 @@ export class PlayerController {
       it.mode = 'guard';
       this.runner.rest(dt, it, broken ? POSES.broken : guardFor(def), 7);
       if (broken) speedMul = 0.35;
+    } else if (k.holding) {
+      // one hand in an opponent's collar: no cutting, but he can be thrown
+      this.runner.cancel();
+      this.finisher = null;
+      this.mode = 'hold';
+      it.mode = 'guard';
+      this.runner.rest(dt, it, POSES.carry, 8);
+      speedMul = 0.6;
+      this.faceYaw = this.yaw;
+      if (frame.lmbPressed || pressed.has('KeyG') || pressed.has('KeyF')) { game.throwHeld(k, 1); this.buffer = 0; }
     } else if (freeSwing) {
       // ----- free blade: the hands follow the mouse, the sword follows with its weight
       if (this.mode !== 'free') this.handRaw.copy(this.runner.hand);
@@ -329,7 +470,19 @@ export class PlayerController {
     } else {
       // guard cancels everything but a blow already on its way
       if (wantGuard && this.runner.busy && this.runner.phase !== 'strike') { this.runner.cancel(); this.buffer = 0; }
-      if (this.buffer > 0 && !wantGuard && k.kickT <= 0) {
+      // ----- iai: hold B to sheathe and coil, let go to draw
+      const iaiKey = inp.down('KeyB') && def.type === 'sword' && this.iaiCd <= 0 && !wantGuard && !k.airborne;
+      if (iaiKey && !this.runner.busy) {
+        if (this.iaiCharge === 0) game.audio.tick?.();
+        this.iaiCharge = Math.min(1, this.iaiCharge + dt / 0.75);
+        if (this.iaiCharge >= 1 && !this.iaiReady) { this.iaiReady = true; game.onIaiReady?.(k); }
+        this.buffer = 0;
+      } else if (this.iaiCharge > 0) {
+        const c = this.iaiCharge;
+        this.iaiCharge = 0; this.iaiReady = false;
+        if (c > 0.3 && !this.runner.busy && !wantGuard) this.startIai(c, mx, mz, moving);
+      }
+      if (this.buffer > 0 && !wantGuard && k.kickT <= 0 && this.iaiCharge <= 0) {
         const a = this.runner.a;
         if (!a) this.startAttack(mx, mz, moving);
         else if (a.phase === 'recover' && a.t > a.recoverDur * 0.2 && !this.finisher) this.startAttack(mx, mz, moving);
@@ -377,16 +530,23 @@ export class PlayerController {
         it.edgeHint = BLOCK_EDGE;
         it.power = 1.5;
         speedMul = 0.5;
+      } else if (this.iaiCharge > 0) {
+        this.finisher = null;
+        this.mode = 'iai';
+        it.mode = 'guard';
+        this.runner.rest(dt, it, POSES.iai, 12);
+        speedMul = 0.45;
       } else {
         this.finisher = null;
         this.mode = 'guard';
         it.mode = 'guard';
-        this.runner.rest(dt, it, k.sprinting ? POSES.carry : guardFor(def), k.sprinting ? 8 : 6);
+        this.runner.rest(dt, it, k.sprinting || k.slideT > 0 ? POSES.carry : this.homePose(def), k.sprinting ? 8 : 6);
       }
     }
+    k.atk = this.runner.a;
 
     // ---------- sprint
-    const sprint = shift && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne;
+    const sprint = shift && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne && k.slideT <= 0;
     k.sprinting = sprint;
     if (sprint) speedMul *= 1.62;
 
@@ -407,20 +567,23 @@ export class PlayerController {
     it.yaw = this.spinTo ?? this.faceYaw;
 
     // ---------- locomotion
-    let speed = 5.0 * def.moveMul * k.speedMul * speedMul * (armed ? 1 : 1.08);
+    let speed = 5.0 * def.moveMul * k.speedMul * speedMul * (armed ? 1 : 1.08) * STANCES[this.stance].move;
     if (this.lock && !sprint && mf < 0) speed *= 0.82;
     if (moveOn) it.move.set(moveX * speed, 0, moveZ * speed);
     else it.move.set(0, 0, 0);
 
     // ---------- tools
-    if (pressed.has('KeyF') && !broken && this.runner.phase !== 'strike' && !this.finisher) {
-      if (k.startKick(k.sprinting ? 1.6 : 1)) this.runner.cancel();
+    if (pressed.has('KeyF') && !broken && this.runner.phase !== 'strike' && !this.finisher && this.mode !== 'hold') {
+      if (k.startKick(k.airborne ? 1.7 : k.sprinting ? 1.6 : 1, k.airborne)) this.runner.cancel();
     }
+    if (pressed.has('KeyG') && !broken && this.mode !== 'hold' && !this.runner.busy && !k.airborne) game.tryGrab(k);
     if (k.kickT > 0 && k.kickPower <= 1) it.move.multiplyScalar(0.15);
-    if (pressed.has('KeyQ') && this.kunaiCd <= 0 && !broken) {
+    if (pressed.has('KeyQ') && this.kunaiCd <= 0 && !broken && this.mode !== 'hold') {
       this.kunaiCd = 0.45;
-      game.throwKunai(k, this.lock, this.yaw, this.pitch);
+      // with the guard up the weapon in hand is what flies
+      if (inp.rmb && armed && !this.runner.busy) game.throwWeapon(k, this.lock, this.yaw, this.pitch);
+      else game.throwKunai(k, this.lock, this.yaw, this.pitch);
     }
-    if (pressed.has('KeyC')) game.playerHeal();
+    if (pressed.has('KeyC') && k.isPlayer) game.playerHeal();
   }
 }

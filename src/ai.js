@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { rand, clamp, dampFactor, angleLerp } from './physics.js';
+import { rand, clamp, dampFactor, angleLerp, angleDiff } from './physics.js';
 import { POSES, guardFor, BLOCK_EDGE, MOVESETS, AttackRunner, spinYaw } from './combat.js';
 import { pick } from './roster.js';
 
@@ -8,6 +8,7 @@ const _w = new THREE.Vector3();
 const _h = new THREE.Vector3();
 const _me = new THREE.Vector3();
 const ARENA_KEEP = 12;
+const ATTACK_THRUST = new Set(['tsuki', 'tsukiLow']);
 
 /** Opponent / ally mind: picks a target on the other side, closes in, circles, cuts, guards, evades. */
 export class Brain {
@@ -33,6 +34,12 @@ export class Brain {
     this.flee = false;          // lost heart (maimed or bleeding out): backs away instead of pressing
     this.fleeRolled = false;
     this.pose = { hand: new THREE.Vector3(), dir: new THREE.Vector3() };   // scratch pose (guard side, breathing)
+    this.tele = null;           // what the wind-up announces: 'thrust' | 'sweep' | 'heavy' | 'arrow' | 'gun'
+    this.fearT = 0;             // shaken by what just happened to a comrade
+    this.shotCd = rand(1.5, 3.5);
+    this.aimPoint = new THREE.Vector3();
+    this.aimLocked = false;
+    this.pushT = 0;
   }
 
   get attacking() { return this.runner.threatening; }
@@ -75,13 +82,19 @@ export class Brain {
     const k = this.k, def = k.weapon.def, type = this.type;
     let name = pick(MOVESETS[def.key].ai);
     if (name === 'spin' && type.combo < 3) name = 'kesaR';      // only seasoned fighters spin
+    if (k.mountH > 0) name = def.key === 'yari' ? 'tsuki' : pick(['yokoR', 'yokoL', 'kesaR']);
     const weight = 0.75 + def.swing.wind * 1.25;
-    this.runner.start(name, def, {
-      wind: rand(0.3, 0.55) / this.aggr * type.windMul * weight * (1.6 - 0.6 * vit) * (first ? 1 : 0.6),
+    // now and then a slow blow with everything behind it: it goes straight through a guard
+    const heavy = first && k.mountH <= 0 && Math.random() < (type.heavy || 0) && !ATTACK_THRUST.has(name) && name !== 'spin';
+    const a = this.runner.start(name, def, {
+      wind: rand(0.3, 0.55) / this.aggr * type.windMul * weight * (1.6 - 0.6 * vit) * (first ? 1 : 0.6) * (heavy ? 1.7 : 1),
       strike: def.swing.strike / (0.55 + 0.45 * vit),
-      recover: def.swing.recover + 0.15,
-      power: 1.15,
+      recover: def.swing.recover + 0.15 + (heavy ? 0.25 : 0),
+      power: heavy ? 1.55 : 1.15, heavy,
     });
+    a.unblockable = heavy;
+    this.tele = heavy ? 'heavy' : a.thrust ? 'thrust' : a.low ? 'sweep' : 'cut';
+    this.game.onTelegraph?.(k, this.tele);
     if (first) this.comboLeft = Math.floor(Math.random() * type.combo);
     else this.comboLeft--;
   }
@@ -90,7 +103,22 @@ export class Brain {
     const k = this.k;
     const it = k.intent;
     const game = this.game;
-    if (k.state !== 'active') { this.runner.cancel(); it.move.set(0, 0, 0); k.attackPhase = null; return; }
+    if (k.state !== 'active') { this.runner.cancel(); it.move.set(0, 0, 0); k.attackPhase = null; k.atk = null; k.aimT = 0; this.tele = null; return; }
+    this.fearT = Math.max(0, this.fearT - dt);
+    k.atk = this.runner.a;
+    if (this.runner.phase !== 'wind' && k.aimT <= 0) this.tele = null;
+    // ---------- held by the collar or locked blade on blade: nothing to decide
+    if (k.heldBy || k.bound) {
+      this.runner.cancel();
+      this.blockT = 0;
+      it.move.set(0, 0, 0);
+      it.mode = 'guard';
+      it.bladeDir = null; it.edgeHint = null; it.edgeExact = false; it.power = k.bound ? 1.6 : 0.5;
+      this.runner.rest(dt, it, k.bound ? POSES.bind : POSES.broken, k.bound ? 16 : 7);
+      if (k.bound && this.target) { const tp = this.target.getPos(_w), me = k.getPos(_me); it.yaw = Math.atan2(-(tp.x - me.x), -(tp.z - me.z)); }
+      k.attackPhase = null; k.atk = null; k.aimT = 0;
+      return;
+    }
 
     this.targetT -= dt;
     const t0 = this.target;
@@ -130,6 +158,7 @@ export class Brain {
 
     // ---------- disarmed: go and pick the weapon back up
     if (!this.fleeRolled && (k.armless || vit < 0.28)) { this.fleeRolled = true; this.flee = k.armless || Math.random() < 0.5; }
+    const afraid = this.flee || this.fearT > 0;
     if (!k.weapon.attached && !k.armless) {
       const wp = k.weapon.body.position;
       const wx = wp.x - me.x, wz = wp.z - me.z, wd = Math.hypot(wx, wz);
@@ -158,7 +187,10 @@ export class Brain {
     const dist = Math.hypot(dx, dz) || 0.001;
     const fx = dx / dist, fz = dz / dist;
     const wantYaw = Math.atan2(-fx, -fz);
+    if (k.mountH > 0) { this.rideUpdate(dt, tgt, dist, fx, fz, wantYaw, me, vit); return; }
     it.yaw = angleLerp(it.yaw, wantYaw, dampFactor(this.striking ? 2.5 : 5, dt));
+    if (this.type.ranged && !afraid && k.weapon.attached && this.shootUpdate(dt, tgt, dist, fx, fz, me, vit)) return;
+    k.aimT = 0;
 
     // badly hurt fighters get cautious
     const wounded = vit < 0.45;
@@ -167,8 +199,8 @@ export class Brain {
     // ---------- locomotion
     let fwd = 0, side = 0;
     const speed = 4.0 * def.moveMul * this.aggr;
-    if (this.flee && dist < 8 && !(k.weapon.attached && dist < ideal)) {
-      fwd = -speed * 0.75;                                        // giving ground, eyes on the blade
+    if (afraid && dist < (this.fearT > 0 ? 11 : 8) && !(this.flee && k.weapon.attached && dist < ideal)) {
+      fwd = -speed * (this.fearT > 0 ? 0.95 : 0.75);              // giving ground, eyes on the blade
     } else if (this.striking) {
       fwd = dist > def.reach * 0.7 ? 2.2 : 0.4;
     } else if (this.recoilT > 0 || k.staggerT > 0) {
@@ -182,19 +214,7 @@ export class Brain {
       side = 1.4 * this.strafe;
     }
     const rx = -fz, rz = fx;
-    let mx = fx * fwd + rx * side, mz = fz * fwd + rz * side;
-    // keep some room between comrades
-    for (const o of game.fighters) {
-      if (o === k || o.team !== k.team || o.state !== 'active') continue;
-      const op = o.core.position;
-      const sx = me.x - op.x, sz = me.z - op.z;
-      const d = Math.hypot(sx, sz);
-      if (d < 1.7 && d > 0.001) { mx += (sx / d) * (1.7 - d) * 2.5; mz += (sz / d) * (1.7 - d) * 2.5; }
-    }
-    // stay inside the courtyard
-    const r = Math.hypot(me.x, me.z);
-    if (r > ARENA_KEEP) { mx -= (me.x / r) * (r - ARENA_KEEP) * 3; mz -= (me.z / r) * (r - ARENA_KEEP) * 3; }
-    it.move.set(mx, 0, mz);
+    this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me);
 
     // ---------- reading the opponent: evade, guard or (rarely) deflect
     const tw = tgt.weapon;
@@ -227,7 +247,7 @@ export class Brain {
     if (!this.runner.busy && canAttack && this.kickCd <= 0 && dist < 1.55 && (tgt.guardT > 0.7 || Math.random() < dt * 0.3)) {
       if (k.startKick(1)) this.kickCd = rand(4, 8);
     }
-    if (!this.runner.busy && canAttack && this.cooldown <= 0 && dist < ideal + 0.5 && !(this.flee && dist > ideal)
+    if (!this.runner.busy && canAttack && this.cooldown <= 0 && dist < ideal + 0.5 && !(afraid && dist > ideal) && this.fearT <= 0
         && Math.random() < 0.3 + 0.7 * vit && game.attackTokens(k.team) < game.maxTokens(k.team)) {
       if (dist > ideal + 0.2 && k.dashCd <= 0 && Math.random() < 0.35) k.dash(_v.set(fx, 0, fz));
       this.startAttack(true, vit);
@@ -256,5 +276,99 @@ export class Brain {
       this.runner.rest(dt, it, ip, this.recoilT > 0 ? 2 : 5);
     }
     k.attackPhase = this.runner.phase;
+    k.atk = this.runner.a;
+  }
+
+  /** Move intent with room kept between comrades and the wall. */
+  steer(mx, mz, me) {
+    const k = this.k;
+    for (const o of this.game.fighters) {
+      if (o === k || o.team !== k.team || o.state !== 'active') continue;
+      const op = o.core.position;
+      const sx = me.x - op.x, sz = me.z - op.z;
+      const d = Math.hypot(sx, sz);
+      if (d < 1.7 && d > 0.001) { mx += (sx / d) * (1.7 - d) * 2.5; mz += (sz / d) * (1.7 - d) * 2.5; }
+    }
+    const r = Math.hypot(me.x, me.z);
+    if (r > ARENA_KEEP) { mx -= (me.x / r) * (r - ARENA_KEEP) * 3; mz -= (me.z / r) * (r - ARENA_KEEP) * 3; }
+    k.intent.move.set(mx, 0, mz);
+  }
+
+  /**
+   * Archers and gunners: keep their distance, draw, loose. Returns false when the target is close
+   * enough that the short sword has to do (the normal melee logic then takes over).
+   */
+  shootUpdate(dt, tgt, dist, fx, fz, me, vit) {
+    const k = this.k, it = k.intent, gun = this.type.ranged === 'gun';
+    if (dist < 3.2 && k.aimT <= 0) return false;
+    this.runner.cancel();
+    this.blockT = 0;
+    k.attackPhase = null; k.atk = null;
+    it.mode = 'guard';
+    this.runner.rest(dt, it, POSES.carry, 6);
+    const speed = 3.6 * this.aggr;
+    const rx = -fz, rz = fx;
+    if (k.aimT > 0) {
+      // drawn: stand still, follow the target until the last moment, then let fly
+      k.aimT -= dt;
+      it.move.set(0, 0, 0);
+      const lockAt = gun ? 0.32 : 0.12;
+      if (!this.aimLocked) {
+        const tv = tgt.state === 'active' ? tgt.core.velocity : null;
+        const lead = gun ? 0 : dist / 30 * 0.85;
+        this.aimPoint.copy(tgt.parts.torso.position);
+        this.aimPoint.y += 0.25;
+        if (tv) { this.aimPoint.x += tv.x * lead; this.aimPoint.z += tv.z * lead; }
+        if (k.aimT <= lockAt) this.aimLocked = true;
+      }
+      if (k.aimT <= 0 || dist < 2.2) {
+        if (k.aimT <= 0) { if (gun) this.game.fireGun(k, this.aimPoint); else this.game.fireArrow(k, this.aimPoint); }
+        k.aimT = 0;
+        this.tele = null;
+        this.shotCd = (gun ? rand(5, 7.5) : rand(2.4, 4)) / this.aggr;
+      }
+      return true;
+    }
+    let fwd = 0, side = 0;
+    if (dist < 7) fwd = -speed * 0.85;
+    else if (dist > 12.5) fwd = speed * 0.8;
+    else side = 1.1 * this.strafe;
+    this.steer(fx * fwd + rx * side, fz * fwd + rz * side, me);
+    this.shotCd -= dt * (0.5 + 0.5 * vit);
+    if (this.shotCd <= 0 && dist < 17 && k.staggerT <= 0) {
+      k.aimT = (gun ? 1.6 : 0.95) / (0.6 + 0.4 * vit);
+      this.aimLocked = false;
+      this.tele = gun ? 'gun' : 'arrow';
+      this.game.onTelegraph?.(k, this.tele);
+    }
+    return true;
+  }
+
+  /** On horseback: gallop past in wide arcs and cut on the way through. */
+  rideUpdate(dt, tgt, dist, fx, fz, wantYaw, me, vit) {
+    const k = this.k, it = k.intent, def = k.weapon.def, game = this.game;
+    const r = Math.hypot(me.x, me.z);
+    let aimYaw = wantYaw;
+    // past the target: keep going a while before wheeling round; near the wall: turn back in
+    const ahead = Math.cos(angleDiff(it.yaw, wantYaw));
+    if (dist < 4 && ahead < 0.2) aimYaw = it.yaw;
+    if (r > 9.5) aimYaw = Math.atan2(me.x, me.z) + (this.strafe > 0 ? 0.5 : -0.5);
+    const turn = dampFactor(r > 9.5 ? 3.2 : 1.9, dt);
+    it.yaw = angleLerp(it.yaw, aimYaw, turn);
+    const sp = (k.staggerT > 0 ? 4 : 8.6) * this.aggr * (0.5 + 0.5 * vit);
+    it.move.set(-Math.sin(it.yaw) * sp, 0, -Math.cos(it.yaw) * sp);
+    it.bladeDir = null; it.edgeHint = null; it.edgeExact = false; it.power = 1;
+    const canAttack = k.staggerT <= 0 && k.weapon.attached && this.recoilT <= 0;
+    if (!this.runner.busy && canAttack && this.cooldown <= 0 && dist < def.reach + 2.6 && ahead > 0.3) this.startAttack(true, vit);
+    if (this.runner.busy) {
+      const ev = this.runner.update(dt, it);
+      if (ev === 'strike') game.onSwing(k);
+      else if (ev === 'done') this.cooldown = rand(1.2, 2.2);
+    } else {
+      it.mode = 'guard';
+      this.runner.rest(dt, it, POSES.carry, 5);
+    }
+    k.attackPhase = this.runner.phase;
+    k.atk = this.runner.a;
   }
 }

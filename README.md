@@ -43,23 +43,62 @@ Die vollständige Tastenbelegung:
 | Taste | Aktion |
 |---|---|
 | WASD · Maus | bewegen (relativ zur Kamera) · Kamera |
-| Shift | Ausweichschritt (kurz unverwundbar) · gehalten: Sprint |
-| Space | Sprung – Angriff in der Luft = Sturzhieb |
+| Shift | Ausweichschritt (kurz unverwundbar) · gehalten: Sprint · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
+| Shift in einen Stoß hinein | **Klinge niedertreten**: der Fuß landet auf der Waffe, die Haltung des Gegners leidet schwer |
+| Space | Sprung – Angriff in der Luft = Sturzhieb · an der Mauer nochmal Space: **Wandsprung** · im Sprint gegen die Mauer: höherer Sprung |
+| Space gegen das Podest | **Klettern**: du ziehst dich über die Kante (Stufe und Deck links im Hof) |
+| Space über einen Feger, dann F | **Sprungtritt** als Konter |
+| X im Sprint | **Rutschen**: unter hohen Hieben durch · LMB dabei: Hieb auf die Beine |
 | LMB | Hieb · mehrfach klicken: Kombo · halten: aufgeladener, schwerer Hieb · im Sprint: Ausfallstoß |
 | RMB | Deckung. Erst im letzten Moment gehoben = **Abwehr** (Klinge des Gegners fliegt zur Seite) |
 | LMB bei gebrochener Haltung | **Todesstoß** (roter 斬-Marker über dem Gegner) |
 | LMB direkt nach einer Abwehr | **Konter**: sofortiger, tiefer Gegenhieb in kurzer Zeitlupe |
 | LMB im Sprint (Schwerter) | **Durchschlag**: durch den Gegner hindurchrennen und im Vorbeigehen schneiden |
 | F | **Tritt**: stößt Gegner um (sie stehen wieder auf), drückt eine Deckung ein, tritt Fässer, Krüge und Körper weg · im Sprint: Sprungtritt |
+| B halten, loslassen | **Iai**: aufgeladener Zieh-Hieb durch den Gegner hindurch (nur Schwerter) |
+| Mausrad (ohne Ziel) / L | **Haltung**: Gedan (tief, schnell) · Chūdan · Jōdan (hoch, wuchtig) |
+| G | **Packen**: Gegner am Kragen als Schild halten · LMB / G / F: **werfen** (reißt andere um, zerschlägt Kisten) |
+| RMB halten + Q | **Waffe werfen** – danach mit E zurückholen oder die Waffe eines Gefallenen nehmen |
+| LMB hämmern bei Klingenbindung | Treffen sich zwei Hiebe, verhaken die Klingen – wer stärker drückt, gewinnt |
 | Tab / mittlere Maustaste | Ziel erfassen · Mausrad: Ziel wechseln |
 | Q · C · E | Kunai werfen · Wunden versorgen (3 Verbände) · Waffe aufheben / vom Ständer nehmen |
 | V | „Freie Klinge": LMB halten und die Maus führt das Schwert direkt |
 | 1–6 | Katana · Wakizashi · Nōdachi · Yari · Naginata · Kanabō |
 | K | Skin: Rōnin · Samurai · Weißer Kranich · Schatten · Oni |
 | R · T | Gegner spawnen · Verbündeten rufen |
-| M | Modus: Duell → Gefecht (immer +3) → **Überleben** → **Chaos** |
+| M | Modus: Duell → Gefecht (immer +3) → **Überleben** → **Chaos** → **2 Spieler** |
+| U | Wetter / Tageszeit: Abenddämmerung → Nacht → Regen → Schnee |
+| P | Wiederholung des Todesstoßes an/aus |
 | Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
 | Backspace | Hof zurücksetzen · Esc gibt die Maus für die Leiste oben frei |
+
+## Angriffe lesen
+
+Über dem Kopf eines Gegners erscheint beim Ausholen ein Zeichen, wenn der Angriff eine besondere
+Antwort verlangt:
+
+| Zeichen | Bedeutet | Antwort |
+|---|---|---|
+| **突** (blau) | Stoß | mit Shift **hinein**weichen – der Fuß tritt die Waffe nieder |
+| **足** (gelb) | Feger auf die Beine | **springen**, in der Luft F für den Sprungtritt |
+| **危** (rot) | schwerer Hieb oder Schuss | nicht blocken – **ausweichen** (er bricht jede Deckung) |
+| **弓** (weiß) | Pfeil | blocken, ausweichen oder mit der Klinge aus der Luft schlagen |
+
+## 2 Spieler am selben Rechner
+
+Modus **2 Spieler** (Taste M): Spieler 1 wie gewohnt, Spieler 2 mit Gamepad – oder ohne Gamepad auf
+der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
+
+| Aktion | Gamepad | Tastatur |
+|---|---|---|
+| Bewegen | linker Stick | Pfeiltasten |
+| Hieb | X / RB | `,` oder Numpad 1 |
+| Deckung | LB | `.` oder Numpad 2 |
+| Ausweichen | B | `-` oder Numpad 3 |
+| Sprung | A | Enter oder Numpad 0 |
+| Tritt | Y | `#` oder Numpad 5 |
+| Iai · Kunai | LT · RT | – |
+| Haltung · Packen · Waffe wechseln | Steuerkreuz hoch · runter · links/rechts | Numpad 7 · 9 · 4/6 |
 
 ## Kampfsystem
 
@@ -84,9 +123,24 @@ Die vollständige Tastenbelegung:
 - **Gore.** Saubere, harte Schnitte trennen Arme, Beine oder den Kopf ab; Stümpfe spritzen, Klingen
   werden blutig, unter den Gefallenen bilden sich Lachen.
 - **Gegner:** Ashigaru (Speer), Rōnin, Samurai, Oni-Krieger (Eisenkeule, kaum zu erschüttern),
-  Daimyō (wehrt selbst ab). Oben in der Leiste wählbar oder zufällig.
+  Daimyō (wehrt selbst ab), **Bogenschütze** (hält Abstand, Pfeile lassen sich abwehren),
+  **Teppō-Schütze** (Luntenschloss: lange Ansage, nicht zu blocken) und **Reiter** (prescht durch
+  den Hof, reitet nieder; ein harter Treffer aufs Pferd oder ein Tritt holt ihn herunter).
+  Oben in der Leiste wählbar oder zufällig.
+- **Moral.** Fällt der Anführer oder rollt ein Kopf, verlieren die Zaghaften für einige Sekunden
+  den Mut und weichen zurück.
+- **Duell-Eröffnung.** Jedes Duell beginnt Auge in Auge, die Hand am Griff: warten, bis der Gegner
+  zuckt (**今**), dann LMB. Schneller gezogen = ein einziger Schnitt. Zu früh oder zu spät kostet
+  Haltung oder Blut. RMB überspringt.
+- **Wiederholung.** Der Todesstoß, der den Kampf beendet, läuft noch einmal in Zeitlupe aus
+  kreisender Kamera (Klick überspringt, P schaltet ab).
+- **Wetter.** Nacht (nur Laternen und Mond), Regen (rutschiger Boden, Feuer erlischt), Schnee
+  (jeder verwundete Schritt hinterlässt eine Spur).
+- **Feuer.** Eine zerschlagene Laterne setzt ihr Öl in Brand; das Feuer greift auf Papierwände,
+  Kisten, Fässer und Strohmatten über und verbrennt, wer darin steht.
 - **Überleben:** Wellen, die jedes Mal größer, schneller und standfester werden; jede 5. Welle führt
-  ein Daimyō an. Pro überstandener Welle gibt es einen Verband zurück. Wer fällt, hat verloren –
+  ein Daimyō an. Pro überstandener Welle gibt es einen Verband zurück und **eine von drei
+  Verbesserungen zur Wahl** (Tasten 1–3), die bis zum Ende des Laufs bleiben. Wer fällt, hat verloren –
   Welle, Besiegte und Zeit werden gewertet, der Rekord bleibt gespeichert.
 - **Chaos:** Es kommen ununterbrochen neue Gegner, immer mehr gleichzeitig (bis 14), und immer mehr
   greifen zugleich an. Gewertet werden Besiegte und Überlebenszeit.
@@ -100,7 +154,7 @@ Die vollständige Tastenbelegung:
 |---|---|
 | `main.js` | Game-Loop (120 Hz Fixed-Step), Treffer → Wunden, Block/Abwehr/Haltung, Todesstoß, Modi, Kamera, HUD |
 | `combat.js` | Stellungen und Hiebe (Handposition + Klingenrichtung), Movesets pro Waffe, `AttackRunner` (Ausholen → Schlag → Halten → Rückführung), Haltungs-Werte |
-| `player.js` | Eingabe, Kombos, Deckung, Lock-on, Sprint/Ausweichen/Sprung, Freie Klinge |
+| `player.js` | Eingabe, Kombos, Deckung, Lock-on, Sprint/Ausweichen/Sprung, Haltungen, Iai, Freie Klinge, Gamepad-Eingabe |
 | `ai.js` | Gegner- und Verbündeten-KI: Ziel wählen, annähern, umkreisen, Kombos, blocken, abwehren, ausweichen |
 | `samurai.js` | Kämpfer: aktiver Physik-Körper (PD-Balance), IK-Arme/-Beine, Ragdoll, Abtrennen, Haltung |
 | `figure.js` | Prozedurale Figuren mit gemalten Gesichtern, Stoff- und Lamellentexturen: Kimono, Hakama, Dō, Sode, Kabuto, Kasa, Menpō … |
@@ -110,6 +164,9 @@ Die vollständige Tastenbelegung:
 | `arena.js` | Der Hof: Mauer, Torii, Pagode, Kirschbäume, Blütenblätter, Strohmatten, Bambus |
 | `breakables.js` | Zerstörbare Objekte: Kisten, Fässer, Krüge, Papierwände, Steinlaternen |
 | `effects.js` / `audio.js` | Blut, Funken, Decals / prozeduraler Web-Audio-Sound (Stahl, Taiko, Koto) |
+| `world.js` | Wetter und Tageszeit, Feuer, das Podest zum Klettern |
+| `mount.js` | Pferd für berittene Gegner |
+| `extras.js` | Klingenbindung, Duell-Eröffnung, Verbesserungen, Wiederholung, 2-Spieler-Modus |
 | `physics.js` | Welt, Kollisionsgruppen, Mathe-Helfer |
 
 Balance-Stellschrauben: `WEAPONS` in `weapons.js`, `TYPES`/`SKINS` in `roster.js`, `POSTURE` und

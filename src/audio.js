@@ -37,6 +37,7 @@ export class AudioFX {
 
     this.startWhoosh();
     this.startAmbience();
+    if (this.rainWanted) this.setRain(true);
   }
 
   makeImpulse(seconds, decay) {
@@ -316,6 +317,21 @@ export class AudioFX {
   }
 
   /** Soft click for lock-on. */
+  /** Steady rain on gravel and roof tiles. */
+  setRain(on) {
+    if (!this.ctx) { this.rainWanted = on; return; }
+    if (!this.rainG) {
+      const ctx = this.ctx, n = this.noiseSrc(true);
+      const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 900;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 5200;
+      this.rainG = ctx.createGain();
+      this.rainG.gain.value = 0;
+      n.connect(hp).connect(lp).connect(this.rainG).connect(this.master);
+      n.start();
+    }
+    this.rainG.gain.setTargetAtTime(on ? 0.11 : 0, this.ctx.currentTime, 0.6);
+  }
+
   tick() {
     if (!this.ctx) return;
     const ctx = this.ctx, t = ctx.currentTime;

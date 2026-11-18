@@ -16,23 +16,29 @@ import { AudioFX } from './audio.js';
 import { Brain } from './ai.js';
 import { Input, PlayerController } from './player.js';
 import { SKINS, SKIN_ORDER, TYPES, TYPE_ORDER, ALLY_STYLE, pick, randomType } from './roster.js';
-import { GUARD, POSTURE, DEFLECT_WINDOW } from './combat.js';
+import { GUARD, POSTURE, DEFLECT_WINDOW, STANCES } from './combat.js';
+import { Weather, Fire, buildPlatforms } from './world.js';
+import { Horse } from './mount.js';
+import { BladeBind, Standoff, Perks, Replay, Versus } from './extras.js';
 
 const MODES = {
   duel: { name: 'Duell', call: 'DUELL' },
   skirmish: { name: 'Gefecht', call: 'GEFECHT' },
   survival: { name: 'Überleben', call: 'ÜBERLEBEN', run: true },     // waves that keep getting harder; death ends the run
   chaos: { name: 'Chaos', call: 'CHAOS', run: true },                 // they just keep coming, more and more
+  versus: { name: '2 Spieler', call: 'ZWEIKAMPF' },                   // player 2 on a gamepad or the arrow keys
 };
-const MODE_ORDER = ['duel', 'skirmish', 'survival', 'chaos'];
+const MODE_ORDER = ['duel', 'skirmish', 'survival', 'chaos', 'versus'];
+const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危', 'heavy'], arrow: ['弓', 'arrow'], gun: ['危', 'heavy'] };
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
 const ZONE_KNOCK = { head: 1.25, torso: 1.0, armR: 0.5, armL: 0.5, legR: 0.6, legL: 0.6 };
-const STANCE = { guard: 'Chūdan', swing: 'Hieb', charge: 'Aufgeladen', parry: 'Deckung', free: 'Freie Klinge' };
+const STANCE = { guard: 'Chūdan', swing: 'Hieb', charge: 'Aufgeladen', parry: 'Deckung', free: 'Freie Klinge', iai: 'Iai – gespannt', bind: 'Klingenbindung', hold: 'Im Griff' };
 const up = (t) => t.toUpperCase();
 const MAX_CORPSES = 10;
 const MAX_KUNAI = 12;
 const WALL_LIMIT = ARENA_R + 0.9;
+const WALL_FACE = 14.3;         // where the inside of the yard wall actually is
 
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
@@ -87,6 +93,15 @@ class Game {
     this.audio = new AudioFX();
     this.input = new Input(this.canvas);
     this.arena = new Arena(this);
+    this.platforms = buildPlatforms(this);
+    this.grip = 1;                 // how well feet hold on the ground (rain makes it slick)
+    this.perk = { dmg: 1, deflect: 1, kunai: 1, postureDmg: 1, lifesteal: false };
+    this.timers = [];
+    this.horses = [];
+    this.perfectCd = 0;
+    this.SamuraiClass = Samurai;
+    this.weather = new Weather(this);
+    this.fire = new Fire(this);
 
     this.pending = [];
     this.npcs = [];        // everyone but the player: opponents (team 1) and allies (team 0)
@@ -118,8 +133,14 @@ class Game {
       isPlayer: true, style: skin, position: new THREE.Vector3(0, 0, 4), yaw: 0, weapon: 'katana',
       armor: skin.prot, speedMul: skin.speed, posture: 1.25, name: 'Du',
     });
+    this.player.dodge = this.dodgeFor(skin);
     this.ctl = new PlayerController(this, this.player, this.input);
     this.arena.showRack('katana');
+    this.bind = new BladeBind(this);
+    this.standoff = new Standoff(this);
+    this.perks = new Perks(this);
+    this.replay = new Replay(this);
+    this.versus = new Versus(this);
 
     this.setupUI();
     this.spawnWave(true);
@@ -166,6 +187,8 @@ class Game {
       weapon: pick(type.weapons), armor: style.prot, posture: type.posture,
     });
     k.brain = new Brain(this, k, type);
+    if (type.mounted) this.horses.push(new Horse(this, k));
+    if (type.ranged) k.parts.fArmL.add(rangedProp(type.ranged));
     if (team === 1 && this.mode === 'survival') {
       // every wave they are a little quicker to strike, better at guarding and harder to shake
       const w = this.wave;
@@ -185,6 +208,8 @@ class Game {
   removeNpc(k) {
     k.disposed = true;
     k.labelEl?.remove();
+    if (k.horse) { k.horse.dispose(); this.horses = this.horses.filter((h) => h !== k.horse); }
+    if (this.player.holding === k) this.player.holding = null;
     k.dispose();
     this.npcs = this.npcs.filter((e) => e !== k);
     this.corpses = this.corpses.filter((e) => e !== k);
@@ -201,7 +226,10 @@ class Game {
 
   spawnWave(first = false) {
     const alive = this.livingEnemies;
-    if (this.mode === 'duel') {
+    if (this.mode === 'versus') {
+      for (const e of [...this.npcs]) this.removeNpc(e);
+      this.versus.spawn();
+    } else if (this.mode === 'duel') {
       for (const e of alive) this.removeNpc(e);
       this.spawnFighter(1, this.rollType(), first ? new THREE.Vector3(0, 0, -3) : null);
     } else if (this.mode === 'skirmish') {
@@ -228,6 +256,13 @@ class Game {
     for (const w of this.kunais) w.dispose();
     this.kunais = [];
     this.arena.resetProps();
+    this.fire.clear();
+    if (this.bind.active) this.bind.end(null);
+    this.standoff.cancel();
+    this.replay.stop();
+    this.replay.pendingT = 0;
+    this.timers = [];
+    this.perks.reset();
     this.player.resetTo(new THREE.Vector3(0, 0, 4), 0);
     this.ctl.reset();
     this.ctl.yaw = 0; this.ctl.pitch = -0.2; this.ctl.faceYaw = 0;
@@ -238,6 +273,7 @@ class Game {
     this.runOver = false;
     this.playerDownT = 0;
     this.spawnWave(true);
+    if (this.mode === 'duel' && this.started && this.input.locked) this.standoff.start(this.livingEnemies[0]);
   }
 
   get isRun() { return !!MODES[this.mode].run; }
@@ -266,9 +302,11 @@ class Game {
       if (alive) return;
       if (!this.waveCleared && this.wave > 0) {
         this.waveCleared = true;
-        this.ctl.heals = Math.min(3, this.ctl.heals + 1);
+        this.ctl.heals = Math.min(this.ctl.maxHeals, this.ctl.heals + 1);
         this.callout(`WELLE ${this.wave} ÜBERSTANDEN`, null, 'parry');
+        this.perks.offer();
       }
+      if (this.perks.choosing) return;          // the next wave waits for the choice
       this.hordeT += dt;
       if (this.hordeT > 3) this.spawnWave();
     } else {
@@ -298,11 +336,13 @@ class Game {
     this.skin = key;
     this.player.setStyle(skin, skin.prot);
     this.player.speedMul = skin.speed;
+    this.player.dodge = this.dodgeFor(skin);
     this.ui.skin.value = key;
     this.callout(up(skin.name), null, 'small');
   }
 
   setMode(mode) {
+    if (this.mode === 'versus' && mode !== 'versus') this.versus.stop();
     this.mode = mode;
     this.ui.mode.textContent = MODES[mode].name;
     this.resetArena();
@@ -365,6 +405,11 @@ class Game {
         if (!w.attached && c.speed < 6) continue;
         w.lastHit.set(key, this.time);
         this.bodyHit(w, hs, c);
+      } else if (hs.horse) {
+        if (c.speed < 4 || (w.thrower || w.owner)?.team === hs.horse.rider.team) continue;
+        w.lastHit.set(key, this.time);
+        hs.horse.onHit(c);
+        if (w.def.thrown) w.dead = true;
       } else if (c.speed > 4) {
         w.lastHit.set(key, this.time);
         const dir = c.rel.clone().normalize();
@@ -393,6 +438,17 @@ class Game {
     this.effects.sparksAt(c.point, 4 + s * 2.2, clamp(s / 8, 0.4, 1.4));
     this.audio.clank(s / 10, wa.def.type === 'club' || wb.def.type === 'club' ? 0.75 : 1.1);
     if (s > 5) this.addHitStop(0.03);
+    // an arrow or kunai met a moving blade: struck out of the air
+    for (const [t, o] of [[wa, wb], [wb, wa]]) {
+      if (!t.def.thrown || !o.attached || t.dead) continue;
+      if (o.tipSpeed > 6 || o.owner?.guarding) {
+        t.dead = true;
+        if (o.owner?.isPlayer) this.callout(t.def.arrow ? 'PFEIL ZERSCHLAGEN!' : 'ABGEWEHRT', c.point, 'parry');
+      }
+      return;
+    }
+    // two committed cuts meet edge on edge: the blades lock
+    if (s > 3.5 && wa.attached && wb.attached && this.bind.tryStart(wa.owner, wb.owner, c.point)) return;
     for (const [def, att] of [[wa, wb], [wb, wa]]) {
       const D = def.owner, A = att.owner;
       if (!D || !A || D.team === A.team || !def.attached || !att.attached) continue;
@@ -409,8 +465,10 @@ class Game {
   guardHit(D, A, w, point, s) {
     if (this.time < w.blockedUntil) return;
     w.blockedUntil = this.time + 0.4;
-    const impact = clamp(s / 11, 0.3, 1.3) * w.def.postureDmg * (A.swingHeavy ? 1.5 : 1);
-    const deflect = D.isPlayer ? D.guardT < (D.deflectWindow ?? DEFLECT_WINDOW) : D.aiDeflect;
+    const deflect = D.isPlayer || D.human ? D.guardT < (D.deflectWindow ?? DEFLECT_WINDOW) : D.aiDeflect;
+    const crush = !!A.atk?.unblockable && !deflect;        // a blow with everything behind it goes through a plain block
+    const impact = clamp(s / 11, 0.3, 1.3) * w.def.postureDmg * (A.swingHeavy ? 1.5 : 1) * (A.postureMul || 1)
+      * (A.isPlayer ? this.perk.postureDmg : 1) * (crush ? 2.6 : 1);
     const ap = A.getPos(_a), dp = D.getPos(_b);
     const away = _c.set(ap.x - dp.x, 0, ap.z - dp.z).normalize().clone();
     _cv.set(away.x, 0.5, away.z).scale(w.body.mass * (deflect ? 4 + s * 0.7 : 2 + s * 0.3), _cv);
@@ -430,6 +488,7 @@ class Game {
       if (mine) { this.shake = Math.max(this.shake, 0.4); this.fx.chroma = Math.max(this.fx.chroma, 0.5); }
       if (D.isPlayer) { this.callout('ABGEWEHRT!', point, 'parry'); this.ctl.counterT = 0.7; }
       else if (A.isPlayer) this.callout('ABGEWEHRT', point, 'small');
+      if (D.human && D.ctl) D.ctl.counterT = 0.7;
       if (broke) this.onGuardBroken(A, point);
     } else {
       const broke = D.addPosture(POSTURE.block * impact);
@@ -438,7 +497,8 @@ class Game {
       this.effects.sparksAt(point, 10 + s, 0.9);
       this.audio.clank(0.5 + s / 14, 0.9);
       this.addHitStop(0.03);
-      if (D.isPlayer) this.shake = Math.max(this.shake, 0.25);
+      if (D.isPlayer) this.shake = Math.max(this.shake, crush ? 0.7 : 0.25);
+      if (crush && D.isPlayer && !broke) this.callout('DURCHBROCHEN!', point, 'crit');
       if (A.isPlayer && s > 4) this.callout('GEBLOCKT', point, 'small');
       if (broke) this.onGuardBroken(D, point);
     }
@@ -469,6 +529,29 @@ class Game {
       if (k.iframeT > 0) {
         if (k.isPlayer && s > 5) this.callout('AUSGEWICHEN', c.point, 'small');
         return;
+      }
+      if (w.attached && attacker) {
+        // a sweep at the legs passes under a jump; a high cut passes over a slide
+        if (attacker.atk?.low && k.airborne) {
+          if (k.sweepJumpT <= 0 && (k.isPlayer || k.human)) this.callout('ÜBERSPRUNGEN!', c.point, 'parry');
+          k.sweepJumpT = 0.9;
+          return;
+        }
+        if (k.slideT > 0 && !attacker.atk?.low && c.point.y > k.groundY + 0.7) {
+          if (k.isPlayer && !k.slidSaid) { k.slidSaid = true; this.callout('UNTERTAUCHT!', c.point, 'parry'); }
+          return;
+        }
+        // the man held by the collar takes what was meant for you
+        const sh = k.holding;
+        if (sh && sh.state === 'active' && attacker !== sh && k.forward(_b).dot(_c.copy(attacker.getPos(_a)).sub(k.getPos(_a)).setY(0).normalize()) > 0.2) {
+          const { sev } = sh.inj.wound('torso', Math.pow(Math.max(0, s - 2.6) / 11, 1.15) * def.damage, def.type === 'club' ? 'blunt' : 'cut', def.armorMul ?? 1);
+          this.effects.blood(c.point, dir, 20 + sev * 60, 1.2);
+          sh.hitFlash = 1;
+          this.audio.hit(0.5 + sev, def.type === 'club');
+          if (k.isPlayer) this.callout('MENSCHLICHER SCHILD', c.point, 'parry');
+          if (sh.inj.dead) { this.throwHeld(k, 0.3); }
+          return;
+        }
       }
       // guard: anything coming from the front is caught on the blade
       if (k.guarding) {
@@ -505,10 +588,11 @@ class Game {
     }
 
     // ---- raw severity from impact speed & weapon, then armour decides what gets through
-    if (attacker && attacker.team === 1 && k.isPlayer) raw *= this.mode === 'chaos' ? 0.5 : 0.7;
+    if (attacker && attacker.team === 1 && k.isPlayer && !attacker.human) raw *= this.mode === 'chaos' ? 0.5 : 0.7;
+    if (byPlayer) raw *= this.perk.dmg;
     if (attacker && w.attached && attacker.liveT <= 0) raw *= 0.25;   // the blade only bites in a committed cut
     if (attacker?.swingHeavy) raw *= 1.25;
-    if (!w.attached) raw *= 0.5;
+    if (!w.attached) raw *= this.time - (w.thrownAt ?? -9) < 2.5 ? 1.5 : 0.5;      // a weapon thrown in earnest, or one just lying about
     const wasDead = k.dead;
     const { sev, ev } = k.inj.wound(zone, raw, kind, def.armorMul ?? 1);
     const deflected = ev.includes('deflect');
@@ -601,7 +685,7 @@ class Game {
       w.bloodUp(1);
     }
     if (severed && byPlayer) this.slowT = Math.max(this.slowT, severed === 'head' ? 0.6 : 0.35);
-    if (severed === 'head') { k.dead = true; if (!wasDead) { this.callout('ENTHAUPTET!', c.point, 'crit'); this.audio.taiko(0.8); } }
+    if (severed === 'head') { k.dead = true; if (!wasDead) { this.callout('ENTHAUPTET!', c.point, 'crit'); this.audio.taiko(0.8); if (k.team === 1) this.spreadFear(c.point, 9, 0.8); } }
     else if (severed) this.callout(zone.startsWith('arm') ? 'ARM ABGETRENNT!' : 'BEIN ABGETRENNT!', c.point, 'crit');
     else if (ev.includes('dead') && !wasDead) this.onFighterDeath(k, c.point);
     else if (ev.includes('ko')) this.callout('BEWUSSTLOS!', c.point, 'crit');
@@ -668,11 +752,14 @@ class Game {
     this.fx.chroma = 1;
     this.kanji(headOff ? '斬首' : '斬');
     this.callout(headOff ? 'ENTHAUPTET!' : 'TODESSTOSS!', point, 'crit');
+    if (V.team === 1) this.spreadFear(point, 10, 0.9);
+    // the blow that ends the fight is shown once more
+    if (A.isPlayer && this.mode !== 'versus' && !this.npcs.some((e) => e !== V && e.team === 1 && !e.counted && !e.dead)) this.replay.trigger(V);
   }
 
   // ------------------------------------------------------------------ tools
-  throwKunai(k, lock, yaw, pitch) {
-    if (k.state !== 'active') return;
+  /** Where a throw goes: at the locked target, else at whoever is close to the line of sight, else straight ahead. */
+  throwAim(k, lock, yaw, pitch) {
     const from = k.parts.torso.position.clone().add(_a.set(0, 0.36, 0));
     const dir = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch) + 0.1, -Math.cos(yaw) * Math.cos(pitch)).normalize();
     // aim assist: the locked target, else whoever is close to the line of sight
@@ -696,15 +783,384 @@ class Game {
       dir.normalize();
     }
     from.addScaledVector(dir, 0.6);
-    const w = new Weapon(this, 'kunai', null);
-    w.thrower = k;
+    return { from, dir };
+  }
+
+  /** A loose projectile (kunai, arrow) on its way. */
+  launch(key, thrower, from, dir, speed) {
+    const w = new Weapon(this, key, null);
+    w.thrower = thrower;
     w.teleport(from, _q.setFromUnitVectors(UPV, dir));
-    w.body.velocity.set(dir.x * 27, dir.y * 27, dir.z * 27);
+    w.body.velocity.set(dir.x * speed, dir.y * speed, dir.z * speed);
     w.body.angularDamping = 0.6;
     this.kunais.push(w);
-    while (this.kunais.length > MAX_KUNAI) this.kunais.shift().dispose();
+    while (this.kunais.length > MAX_KUNAI + 8) this.kunais.shift().dispose();
+    return w;
+  }
+
+  throwKunai(k, lock, yaw, pitch) {
+    if (k.state !== 'active') return;
+    const { from, dir } = this.throwAim(k, lock, yaw, pitch);
+    const n = k.isPlayer ? this.perk.kunai : 1;
+    const right = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+    for (let i = 0; i < n; i++) {
+      // extra kunai fan out to either side
+      const off = i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 ? 1 : -1) * 0.11;
+      const d = dir.clone().addScaledVector(right, off).normalize();
+      this.launch('kunai', k, from.clone().addScaledVector(right, off * 1.5), d, 27);
+    }
     this.audio.whooshBurst(0.45);
   }
+
+  /** The weapon in hand, thrown: a spear flies straight, a sword turns over itself. Then it has to be fetched. */
+  throwWeapon(k, lock, yaw, pitch) {
+    const w = k.weapon;
+    if (k.state !== 'active' || !w?.attached) return;
+    const { from, dir } = this.throwAim(k, lock, yaw, pitch);
+    from.addScaledVector(dir, 0.45);
+    k.disarm(null);
+    w.thrower = k;
+    w.thrownAt = this.time;
+    w.teleport(from, _q.setFromUnitVectors(UPV, dir));
+    const sp = clamp(25 / Math.sqrt(w.def.mass + 0.4), 11, 21);
+    w.body.velocity.set(dir.x * sp, dir.y * sp + 1.2, dir.z * sp);
+    if (w.def.type !== 'polearm') {
+      const right = _a.set(-dir.z, 0, dir.x).normalize();
+      w.body.angularVelocity.set(right.x * -17, 0, right.z * -17);
+    }
+    w.lastHit.clear();
+    if (k.isPlayer) { this.ctl.runner.cancel(); this.callout(w.def.type === 'polearm' ? 'SPEERWURF!' : 'KLINGE GEWORFEN!', null, 'small'); }
+    this.audio.whooshBurst(0.9);
+    this.fx.fovKick = Math.max(this.fx.fovKick, 0.5);
+  }
+
+  /** Take the weapon a dead opponent dropped. */
+  looseWeaponNear(pp, range = 1.7) {
+    let best = null, bd = range;
+    for (const e of this.npcs) {
+      const w = e.weapon;
+      if (!e.dead || !w || w.attached || w.def.thrown || !WEAPON_ORDER.includes(w.def.key)) continue;
+      const d = Math.hypot(w.body.position.x - pp.x, w.body.position.z - pp.z);
+      if (d < bd && w.body.position.y < 2) { bd = d; best = e; }
+    }
+    return best;
+  }
+
+  takeWeapon(e) {
+    const key = e.weapon.def.key;
+    e.weapon.dispose();
+    e.weapon = null;
+    this.player.setWeapon(key);
+    this.player.inj.disarmed = false;
+    this.ctl.runner.cancel();
+    this.arena.showRack(key);
+    this.audio.clank(0.3, 1.2);
+    document.querySelectorAll('#weapon-buttons button').forEach((b) => b.classList.toggle('active', b.dataset.weapon === key));
+    this.callout(`${up(WEAPONS[key].name)} GENOMMEN`, null, 'small');
+  }
+
+  // ------------------------------------------------------------------ archers & gunners
+  fireArrow(k, aim) {
+    if (k.state !== 'active') return;
+    const from = k.parts.torso.position.clone().add(_a.set(0, 0.4, 0)).addScaledVector(k.forward(_b), 0.6);
+    const to = aim.clone().sub(from), d = to.length();
+    const dir = to.divideScalar(d || 1);
+    dir.y += d * 0.0062;
+    dir.normalize();
+    this.launch('arrow', k, from, dir, 30);
+    this.audio.whooshBurst(0.55);
+    if (this.audio.ctx) this.audio.pluck(140, this.audio.ctx.currentTime);
+  }
+
+  /** A matchlock: nothing to block. The shot goes where the muzzle pointed a moment before — so move. */
+  fireGun(k, aim) {
+    if (k.state !== 'active') return;
+    const from = k.parts.torso.position.clone().add(_a.set(0, 0.4, 0)).addScaledVector(k.forward(_b), 0.9);
+    const dir = aim.clone().sub(from).normalize();
+    this.effects.sparksAt(from, 40, 1.6);
+    this.effects.impact(from, 2.2);
+    for (let i = 0; i < 9; i++) {
+      this.effects.mist.emit(from, _a.set(dir.x * rand(0.5, 3) + rand(-0.4, 0.4), rand(0.1, 0.8), dir.z * rand(0.5, 3) + rand(-0.4, 0.4)),
+        { size: rand(0.3, 0.5), grow: 1.4, life: rand(1.2, 2.2), alpha: 0.4, color: 0xbab4a8, grav: -0.15, drag: 1.8 });
+    }
+    this.audio.thud(1.5); this.audio.clank(0.9, 0.3);
+    this.shake = Math.max(this.shake, 0.35);
+    // first body on the line of fire
+    let hit = null, hd = 40;
+    for (const f of this.fighters) {
+      if (f === k || f.team === k.team || f.state !== 'active' || f.dead) continue;
+      const rel = _a.copy(f.parts.torso.position).add(_b.set(0, 0.2, 0)).sub(from);
+      const along = rel.dot(dir);
+      if (along < 0.3 || along > hd) continue;
+      if (rel.addScaledVector(dir, -along).length() > 0.36) continue;
+      hd = along; hit = f;
+    }
+    if (!hit) return;
+    if (hit.iframeT > 0) { if (hit.isPlayer) this.callout('AUSGEWICHEN!', null, 'parry'); return; }
+    const point = from.clone().addScaledVector(dir, hd);
+    const { sev, ev } = hit.inj.wound('torso', hit.isPlayer ? 0.6 : 0.85, 'thrust', 1.4);
+    hit.hitFlash = 1;
+    hit.addWound('torso', point, dir, sev, 'thrust');
+    this.effects.blood(point, dir, 40 + sev * 80, 1.4);
+    this.audio.hit(0.8 + sev, false);
+    hit.brain?.onHit?.(sev);
+    if (hit.isPlayer) { this.hurtFlash(45); this.shake = 0.9; this.callout('GETROFFEN!', point, 'crit'); }
+    if (ev.includes('dead')) { hit.goRagdoll(dir.clone().multiplyScalar(3).setY(1.2), 'torso', true); this.onFighterDeath(hit, point); }
+    else { hit.stagger(dir.clone().multiplyScalar(2.2), point, 0.35, 0.6); if (hit.addPosture(0.35 * hit.postureMax)) this.onGuardBroken(hit, point); }
+  }
+
+  /** An opponent's wind-up announces what is coming. */
+  onTelegraph(k, tele) {
+    if (tele === 'cut' || k.brain?.target !== this.player) return;
+    const w = k.weapon;
+    if (w) this.effects.impact(w.worldPoint(w.tipLocal, _a), tele === 'heavy' || tele === 'gun' ? 1.3 : 0.7);
+    if (tele === 'heavy' || tele === 'gun') this.audio.tick?.();
+  }
+
+  // ------------------------------------------------------------------ morale
+  /** Something terrible happened here: the faint-hearted nearby lose their nerve for a while. */
+  spreadFear(pos, radius, power) {
+    let n = 0;
+    for (const e of this.npcs) {
+      if (e.team !== 1 || e.state !== 'active' || e.dead || e.human || e.mountH > 0 || !e.brain) continue;
+      if (e.getPos(_a).distanceTo(pos) > radius) continue;
+      if (Math.random() < power * (1 - (e.kind?.courage ?? 0.7))) { e.brain.fearT = rand(4, 8); e.brain.runner.cancel(); n++; }
+    }
+    if (n) this.callout(n > 1 ? 'SIE WEICHEN ZURÜCK!' : 'ER WEICHT ZURÜCK!', null, 'small');
+    return n;
+  }
+
+  // ------------------------------------------------------------------ movement: ground, walls, dodges
+  /** Height of whatever is under a point (the podium), given how high the feet are. */
+  groundAt(x, z, feetY) {
+    let g = 0;
+    for (const p of this.platforms) {
+      // a foot on the edge counts: the body is wider than the point it is steered by
+      if (x > p.x0 - 0.3 && x < p.x1 + 0.3 && z > p.z0 - 0.3 && z < p.z1 + 0.3 && feetY > p.top - 0.45 && p.top > g) g = p.top;
+    }
+    return g;
+  }
+
+  /** Outward normal of a wall close enough to push off from (the yard wall or a side of the podium), or null. */
+  wallNear(k, reach = 0.9) {
+    const p = k.core.position;
+    const r = Math.hypot(p.x, p.z);
+    if (r > WALL_FACE - reach) return { x: -p.x / r, z: -p.z / r };
+    const feet = p.y - 0.98;
+    for (const b of this.platforms) {
+      if (feet > b.top - 0.1) continue;
+      const cx = clamp(p.x, b.x0, b.x1), cz = clamp(p.z, b.z0, b.z1);
+      const dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz);
+      if (d > 0.01 && d < reach - 0.1) return { x: dx / d, z: dz / d, top: b.top };
+    }
+    return null;
+  }
+
+  tryWallJump(k) {
+    const n = this.wallNear(k);
+    if (!n || !k.wallJump(n.x, n.z)) return false;
+    const p = k.getPos(_a);
+    this.effects.dust(p, 8, 1.4);
+    this.effects.impact(_b.set(p.x - n.x * 0.5, p.y, p.z - n.z * 0.5), 0.8);
+    this.audio.thud(0.5);
+    if (k.isPlayer) this.fx.fovKick = 1;
+    return true;
+  }
+
+  /** Sprinting at a wall and jumping carries you up it. */
+  wallRunBoost(k) {
+    if (!k.sprinting) return 1;
+    const n = this.wallNear(k, 1.7);
+    if (!n) return 1;
+    const v = k.core.velocity;
+    return v.x * n.x + v.z * n.z < -2 ? 1.32 : 1;
+  }
+
+  /** Jumping against the podium: pull yourself up over the edge. */
+  mantle(k) {
+    if (k.state !== 'active' || !k.airborne) return;
+    const p = k.core.position, feet = p.y - 0.98, mv = k.intent.move;
+    for (const b of this.platforms) {
+      if (feet > b.top - 0.02 || feet < b.top - 1.35) continue;
+      const cx = clamp(p.x, b.x0, b.x1), cz = clamp(p.z, b.z0, b.z1);
+      const dx = cx - p.x, dz = cz - p.z, d = Math.hypot(dx, dz);
+      if (d > 0.7 || d < 0.001 || mv.x * dx + mv.z * dz <= 0) continue;
+      const need = Math.sqrt(2 * 9.82 * (b.top + 0.14 - feet));
+      if (k.core.velocity.y < need) k.core.velocity.y = need;
+      if (feet > b.top - 0.35) { k.core.velocity.x = dx / d * 3; k.core.velocity.z = dz / d * 3; }     // over the edge
+      if (!k.mantleSaid) { k.mantleSaid = true; this.effects.dust(_a.set(cx, b.top, cz), 6); this.audio.thud(0.35); }
+      return;
+    }
+  }
+
+  /** Light fighters slip far and are hard to catch; armour makes the step short but quick to repeat. */
+  dodgeFor(skin) {
+    if (skin.prot < 0.3) return { speed: 1.18, time: 0.23, iframe: 0.34, cd: 0.5 };
+    if (skin.prot > 0.6) return { speed: 0.86, time: 0.16, iframe: 0.24, cd: 0.36 };
+    return { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
+  }
+
+  /**
+   * A step taken at the very last moment. Into a thrust: the foot comes down on the weapon.
+   * Otherwise: time slows and the next cut is a free counter.
+   */
+  onDodge(k, dir, ctl) {
+    if (this.time < this.perfectCd) return;
+    const me = k.getPos(new THREE.Vector3());
+    for (const f of this.fighters) {
+      const a = f.atk;
+      if (f.team === k.team || f.state !== 'active' || !a || !f.weapon?.attached) continue;
+      const fp = f.getPos(_b), dx = fp.x - me.x, dz = fp.z - me.z, d = Math.hypot(dx, dz) || 1e-3;
+      if (d > f.weapon.def.reach + 1.4) continue;
+      if (f.brain?.target && f.brain.target !== k) continue;
+      const imminent = a.phase === 'strike' || (a.phase === 'wind' && a.windDur - a.t < 0.17);
+      if (!imminent) continue;
+      this.perfectCd = this.time + 0.7;
+      const point = f.weapon.worldPoint(f.weapon.ctrlLocal, new THREE.Vector3());
+      if (a.thrust && (dir.x * dx + dir.z * dz) / d > 0.5) {
+        // step on it
+        f.brain?.onParried();
+        if (f.ctl) { f.ctl.runner.cancel(); f.ctl.buffer = 0; }
+        const broke = f.addPosture(0.55 * f.postureMax);
+        f.stagger(_c.set(dx / d, 0, dz / d).multiplyScalar(0.8), point, 0.25, 0.9);
+        const wb = f.weapon.body;
+        wb.velocity.set(0, -6, 0);
+        k.core.velocity.x *= 0.25; k.core.velocity.z *= 0.25;
+        k.dashT = 0.08;
+        k.iframeT = Math.max(k.iframeT, 0.5);
+        ctl.counterT = 0.95;
+        this.effects.sparksAt(point, 26, 1.2); this.effects.impact(point, 1.6); this.effects.dust(point.clone().setY(0), 10);
+        this.audio.thud(1); this.audio.deflect();
+        this.addHitStop(0.09); this.slowT = Math.max(this.slowT, 0.3); this.shake = Math.max(this.shake, 0.5);
+        if (k.isPlayer || k.human) this.callout('KLINGE NIEDERGETRETEN!', point, 'parry');
+        if (broke) this.onGuardBroken(f, point);
+      } else {
+        k.iframeT = Math.max(k.iframeT, 0.42);
+        ctl.counterT = 0.95;
+        f.posture = Math.min(f.postureMax * 0.95, f.posture + 0.12 * f.postureMax);
+        this.slowT = Math.max(this.slowT, 0.45);
+        this.fx.chroma = Math.max(this.fx.chroma, 0.6);
+        this.audio.tick?.();
+        if (k.isPlayer || k.human) this.callout('PERFEKT AUSGEWICHEN!', me.clone().setY(1.6), 'parry');
+      }
+      return;
+    }
+  }
+
+  onSlide(k) {
+    k.slidSaid = false;
+    this.effects.dust(k.getPos(_a), 12, 1.6);
+    this.audio.whooshBurst(0.7);
+    if (k.isPlayer) this.fx.fovKick = 0.8;
+  }
+
+  onIaiReady(k) {
+    const w = k.weapon;
+    this.effects.impact(w.worldPoint(w.handR, _a), 0.9);
+    this.audio.tick?.();
+  }
+
+  onIai(k, c) {
+    this.audio.whooshBurst(1);
+    this.audio.slash?.();
+    this.fx.fovKick = 1;
+    if (k.isPlayer && c >= 1) this.slowT = Math.max(this.slowT, 0.18);
+  }
+
+  // ------------------------------------------------------------------ grab & throw
+  tryGrab(k) {
+    if (k.state !== 'active' || k.holding || k.kickCd > 0) return;
+    const me = k.getPos(_a).clone(), fwd = k.forward(new THREE.Vector3());
+    let best = null, bd = 1.7;
+    for (const f of this.fighters) {
+      if (f.team === k.team || f.state !== 'active' || f.dead || f.heldBy || f.mountH > 0) continue;
+      const p = f.getPos(_b), dx = p.x - me.x, dz = p.z - me.z, d = Math.hypot(dx, dz) || 1e-3;
+      if (d < bd && ((dx * fwd.x + dz * fwd.z) / d > 0.45 || d < 1.25)) { bd = d; best = f; }     // in front, or simply within arm's reach
+    }
+    k.kickCd = 0.7;
+    if (!best) { if (k.isPlayer) this.audio.whooshBurst(0.3); return; }
+    const say = (t, c) => { if (k.isPlayer || k.human) this.callout(t, best.getHeadPos(_c), c); };
+    if (best.attackPhase === 'strike' || best.iframeT > 0) { say('INS LEERE GEGRIFFEN', 'small'); return; }
+    if (best.brokenT <= 0 && (best.kind?.rank >= 5 || best.kind?.key === 'oni' || best.human && best.guarding)) {
+      // too solid on his feet: he shrugs it off
+      say('ZU STANDHAFT!', 'crit');
+      k.stagger(fwd.clone().multiplyScalar(-1.5), k.getHeadPos(_c), 0.15, 0.4);
+      return;
+    }
+    best.heldBy = k; k.holding = best;
+    const kc = k.isPlayer ? this.ctl : k.ctl;
+    if (kc) { const bp = best.getPos(_b); kc.faceYaw = Math.atan2(-(bp.x - me.x), -(bp.z - me.z)); }
+    k.heldT = 2.2;
+    best.brokenT = Math.max(best.brokenT, 2.4);
+    best.staggerT = Math.max(best.staggerT, 2.4);
+    best.brain?.runner?.cancel();
+    this.audio.thud(0.7);
+    this.addHitStop(0.04);
+    say('GEPACKT!', 'parry');
+  }
+
+  /** Let go of the man in hand — with force. He flies, and takes with him what he hits. */
+  throwHeld(k, power = 1) {
+    const f = k.holding;
+    k.holding = null;
+    if (!f) return;
+    f.heldBy = null;
+    if (f.state !== 'active' || f.disposed) return;
+    const d = k.forward(new THREE.Vector3());
+    f.goRagdoll(new THREE.Vector3(d.x * 9.5 * power, 3.4 * power, d.z * 9.5 * power), 'torso', f.dead);
+    f.getUpAt = rand(1.8, 2.6) + (1 - f.inj.vitality) * 2;
+    f.thrownT = 1.3;
+    f.inj.shock = Math.min(1, f.inj.shock + 0.2);
+    if (power >= 1) {
+      this.audio.whooshBurst(0.9);
+      this.shake = Math.max(this.shake, 0.3);
+      if (k.isPlayer || k.human) this.callout('GEWORFEN!', null, 'small');
+    }
+  }
+
+  /** Bodies in flight knock over comrades, smash what they land in and hurt themselves on the wall. */
+  updateThrown(dt) {
+    for (const f of this.fighters) {
+      if (f.thrownT <= 0) continue;
+      f.thrownT -= dt;
+      const b = f.ragBodies?.pelvis;
+      if (!b || f.state !== 'ragdoll') { f.thrownT = 0; continue; }
+      const sp = Math.hypot(b.velocity.x, b.velocity.z);
+      if (sp < 3) continue;
+      const pos = _a.set(b.position.x, b.position.y, b.position.z);
+      const dir = _b.set(b.velocity.x / sp, 0, b.velocity.z / sp);
+      let hit = false;
+      for (const o of this.fighters) {
+        if (o === f || o.team !== f.team || o.state !== 'active' || o.mountH > 0) continue;
+        if (o.getPos(_c).distanceTo(pos) > 1.05) continue;
+        o.goRagdoll(new THREE.Vector3(dir.x * sp * 0.55, 1.6, dir.z * sp * 0.55), 'torso', false);
+        o.getUpAt = rand(1.2, 1.9);
+        o.inj.shock = Math.min(1, o.inj.shock + 0.2);
+        this.callout('UMGERISSEN!', pos, 'crit');
+        hit = true;
+      }
+      for (const it of this.arena.breakables.items) {
+        if (it.broken || !it.body) continue;
+        const q = it.body.position;
+        if (Math.hypot(q.x - pos.x, q.z - pos.z) > 0.95 || Math.abs(q.y - pos.y) > 1.3) continue;
+        this.arena.breakables.damage(it, 45, pos.clone(), dir.clone());
+        hit = true;
+      }
+      if (Math.hypot(pos.x, pos.z) > WALL_FACE - 0.6) { hit = true; this.callout('GEGEN DIE WAND!', pos, 'crit'); }
+      if (hit) {
+        f.thrownT = 0;
+        f.inj.wound('torso', 0.22, 'blunt', 1);
+        this.effects.impact(pos, 1.5);
+        this.audio.thud(1.1); this.audio.hit(0.6, true);
+        this.shake = Math.max(this.shake, 0.4);
+        if (f.inj.dead) f.dead = true;
+      }
+    }
+  }
+
+  /** Run `fn` after `t` seconds of game time. */
+  after(t, fn) { this.timers.push({ t, fn }); }
+
 
   playerHeal() {
     const P = this.player, ctl = this.ctl;
@@ -763,6 +1219,14 @@ class Game {
         const push = new THREE.Vector3(dx / d + fwd.x, 0, dz / d + fwd.z).normalize();
         f.inj.shock = Math.min(1, f.inj.shock + 0.25);
         f.brain?.onHit(0.3);
+        if (k.sweepJumpT > 0) {
+          // over the sweep and straight into his chest
+          k.sweepJumpT = 0;
+          const broke = f.addPosture(0.6 * f.postureMax);
+          if (k.isPlayer || k.human) this.callout('SPRUNGTRITT!', foot, 'parry');
+          this.slowT = Math.max(this.slowT, 0.3);
+          if (broke) this.onGuardBroken(f, foot);
+        }
         if (f.guarding && f.forward(_c).dot(push) < -0.2) {
           // caught on the guard: no fall, but it drives the guard in
           const broke = f.addPosture(0.4 * f.postureMax * pw);
@@ -812,6 +1276,14 @@ class Game {
     k.dead = true;
     const where = point || k.getHeadPos(_c);
     this.callout(up(k.inj.cause || 'Gefallen'), where, 'crit');
+    if (k.team === 1 && !k.human) {
+      // the leader is whoever outranks the rest; when he falls, the rest waver
+      const rest = this.npcs.filter((e) => e !== k && e.team === 1 && !e.dead && !e.counted);
+      const rank = k.kind?.rank ?? 1;
+      if (rest.length && rank >= 3 && rest.every((e) => (e.kind?.rank ?? 1) < rank)) {
+        if (this.spreadFear(where, 30, 1.3)) this.callout('DER ANFÜHRER IST GEFALLEN!', null, 'parry');
+      } else this.spreadFear(where, 6, 0.3);
+    }
   }
 
   /** An opponent counts as defeated once dead or unable to get up. */
@@ -832,6 +1304,11 @@ class Game {
         e.labelEl = null;
         if (e.team === 1) {
           this.kills++;
+          if (this.perk.lifesteal && this.player.state === 'active') {
+            const inj = this.player.inj;
+            this.player.posture = 0;
+            inj.bleeding *= 0.5; inj.shock *= 0.5; inj.blood = Math.min(1, inj.blood + 0.05);
+          }
           if (!this.livingEnemies.length) this.slowT = Math.max(this.slowT, 0.7);      // the last one falls: a breath of slow motion
           if (!e.dead) this.callout('KAMPFUNFÄHIG', e.getHeadPos(_c), 'small');
         }
@@ -939,13 +1416,15 @@ class Game {
       weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), death: $('death'),
       posture: $('posture-fill'), postureBox: $('posture'), tools: $('tools'), mode: $('mode-label'), skin: $('skin-select'),
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
-      slow: $('btn-slow'), callouts: $('callouts'),
+      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'),
     };
     const start = () => { this.audio.init(); this.input.lock(); };
     $('btn-start').addEventListener('click', start);
     this.canvas.addEventListener('click', start);
     document.addEventListener('pointerlockchange', () => {
       $('overlay').classList.toggle('hidden', this.input.locked || this.started);
+      // the very first duel opens with the draw
+      if (this.input.locked && !this.started && this.mode === 'duel' && this.kills === 0) this.standoff.start(this.livingEnemies[0]);
       if (this.input.locked) this.started = true;
     });
     const btn = (id, fn) => $(id).addEventListener('click', (e) => { this.audio.init(); fn(); e.currentTarget.blur(); });
@@ -954,6 +1433,7 @@ class Game {
     btn('btn-mode', () => this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]));
     btn('btn-reset', () => this.resetArena());
     btn('btn-slow', () => this.toggleSlowmo());
+    btn('btn-weather', () => this.nextWeather());
 
     const wb = $('weapon-buttons');
     WEAPON_ORDER.forEach((key, i) => {
@@ -970,6 +1450,12 @@ class Game {
     this.ui.type.add(new Option('Zufall', 'random'));
     for (const key of TYPE_ORDER) this.ui.type.add(new Option(TYPES[key].name, key));
     this.ui.type.addEventListener('change', () => { this.enemyType = this.ui.type.value; this.ui.type.blur(); });
+  }
+
+  nextWeather() {
+    this.weather.next();
+    this.ui.weather.textContent = this.weather.name;
+    this.callout(up(this.weather.name), null, 'small');
   }
 
   toggleSlowmo() {
@@ -1010,14 +1496,19 @@ class Game {
     if (p.has('KeyT')) this.spawnFighter(0);
     if (p.has('KeyM')) this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]);
     if (p.has('Backspace') || p.has('Delete')) this.resetArena();
-    WEAPON_ORDER.forEach((key, i) => { if (p.has('Digit' + (i + 1))) this.setPlayerWeapon(key); });
+    if (this.perks.choosing) { for (let i = 0; i < 3; i++) if (p.has('Digit' + (i + 1))) this.perks.pick(i); }
+    else WEAPON_ORDER.forEach((key, i) => { if (p.has('Digit' + (i + 1))) this.setPlayerWeapon(key); });
+    if (p.has('KeyU')) this.nextWeather();
+    if (p.has('KeyP')) { this.replay.enabled = !this.replay.enabled; this.callout(this.replay.enabled ? 'WIEDERHOLUNG AN' : 'WIEDERHOLUNG AUS', null, 'small'); }
     if (p.has('KeyK')) this.setPlayerSkin(SKIN_ORDER[(SKIN_ORDER.indexOf(this.skin) + 1) % SKIN_ORDER.length]);
     if (p.has('KeyZ')) this.toggleSlowmo();
     if (p.has('KeyN')) { this.audio.music = !this.audio.music; this.callout(this.audio.music ? 'MUSIK AN' : 'MUSIK AUS', null, 'small'); }
     if (p.has('KeyH')) this.ui.help.classList.toggle('hidden');
     if (p.has('KeyE')) {
       if (this.player.weapon && !this.player.weapon.attached) {
+        const loose = this.player.state === 'active' ? this.looseWeaponNear(this.player.getPos(_a)) : null;
         if (this.player.tryRegrab(1.6)) this.callout('Waffe aufgehoben', null, 'small');
+        else if (loose) this.takeWeapon(loose);
       } else if (this.rackSlot) this.setPlayerWeapon(this.rackSlot.key);
     }
   }
@@ -1031,14 +1522,15 @@ class Game {
       if (!el) {
         el = k.labelEl = document.createElement('div');
         el.className = 'tag ' + (k.team === 0 ? 'ally' : 'enemy');
-        el.innerHTML = `<div class="nm">${k.name}</div><div class="bar"><i></i></div><div class="dot">斬</div>`;
+        el.innerHTML = `<div class="warn"></div><div class="nm">${k.name}</div><div class="bar"><i></i></div><div class="dot">斬</div>`;
         el._bar = el.querySelector('i');
+        el._warn = el.querySelector('.warn');
         this.ui.labels.appendChild(el);
       }
       const head = k.getHeadPos(_b);
       const dist = head.distanceTo(pp);
       const p = _c.copy(head).setY(head.y + 0.32).project(cam);
-      if (!show || p.z > 1 || dist > 28) { el.style.display = 'none'; continue; }
+      if (!show || p.z > 1 || dist > 34) { el.style.display = 'none'; continue; }
       el.style.display = '';
       el.style.transform = `translate(${(p.x * 0.5 + 0.5) * innerWidth}px, ${(-p.y * 0.5 + 0.5) * innerHeight}px) translate(-50%, -100%)`;
       el._bar.style.width = (clamp(k.posture / k.postureMax, 0, 1) * 100).toFixed(0) + '%';
@@ -1046,6 +1538,14 @@ class Game {
       el.classList.toggle('near', dist < 9 || this.ctl.lock === k);
       el.classList.toggle('locked', this.ctl.lock === k);
       el.classList.toggle('pressed', k.posture > 0.02 || k.brokenT > 0);
+      // what the wind-up announces: thrust (step in), sweep (jump), heavy / shot (get out of the way)
+      const tl = k.brain?.tele && k.brain.tele !== 'cut' && k.brain.target === this.player ? k.brain.tele : null;
+      if (tl !== el._tele) {
+        el._tele = tl;
+        el._warn.textContent = tl ? TELE[tl][0] : '';
+        el._warn.className = 'warn' + (tl ? ' on ' + TELE[tl][1] : '');
+      }
+      if (k.brain?.fearT > 0 !== el._fear) { el._fear = k.brain?.fearT > 0; el.classList.toggle('afraid', !!el._fear); }
     }
     const lock = this.ctl.lock, r = this.ui.reticle;
     if (lock && lock.state === 'active') {
@@ -1062,13 +1562,15 @@ class Game {
     // paper doll: colour per body part, no numbers
     for (const [z, el] of Object.entries(ui.doll)) el.style.fill = injuryColor(inj.parts[z]);
     ui.doll.torso.style.fill = injuryColor(Math.max(inj.parts.torso, (1 - inj.blood) * 0.9));
-    const st = P.brokenT > 0 ? 'Haltung gebrochen' : P.sprinting ? 'Sprint' : STANCE[this.ctl.mode] || 'Chūdan';
+    const st = P.brokenT > 0 ? 'Haltung gebrochen' : P.slideT > 0 ? 'Rutschen' : P.sprinting ? 'Sprint'
+      : this.ctl.mode === 'guard' ? STANCES[this.ctl.stance].name : STANCE[this.ctl.mode] || 'Chūdan';
     if (st !== this.lastStance) { ui.stance.textContent = st; this.lastStance = st; }
     const wn = P.weapon.attached ? P.weapon.def.name : 'entwaffnet';
     if (wn !== this.lastWeapon) { ui.weapon.textContent = wn; this.lastWeapon = wn; }
     const sc = `${this.kills}`;
     if (sc !== this.lastKills) { ui.kills.textContent = sc; this.lastKills = sc; }
-    const wv = this.mode === 'survival' ? ` · Welle ${this.wave} · ${fmtTime(this.runT)}`
+    const wv = this.mode === 'survival' ? ` · Welle ${this.wave} · ${fmtTime(this.runT)}${this.perks.taken.length ? ' · ' + this.perks.taken.length + ' Verbesserungen' : ''}`
+      : this.mode === 'versus' ? ` · Spieler 1  ${this.versus.score[0]} : ${this.versus.score[1]}  Spieler 2${this.versus.pad.connected ? '' : ' (Pfeiltasten , . - · oder Gamepad anschließen)'}`
       : this.mode === 'chaos' ? ` · ${fmtTime(this.runT)} · ${this.livingEnemies.length} im Hof` : '';
     if (wv !== this.lastWave) { ui.wave.textContent = wv; this.lastWave = wv; }
     const tools = `Verbände ${this.ctl.heals}${this.ctl.free ? ' · Freie Klinge' : ''}${this.ctl.lock ? ' · Ziel erfasst' : ''}`;
@@ -1094,7 +1596,10 @@ class Game {
       if (!P.weapon.attached) {
         const q = P.weapon.body.position;
         const d = Math.hypot(q.x - pp.x, q.z - pp.z);
-        prompt = d < 1.6 ? '<kbd>E</kbd> Waffe aufheben' : 'Entwaffnet – geh zu deiner Waffe';
+        const loose = this.looseWeaponNear(pp);
+        prompt = d < 1.6 ? '<kbd>E</kbd> Waffe aufheben' : loose ? `<kbd>E</kbd> ${loose.weapon.def.name} nehmen` : 'Entwaffnet – hol deine Waffe oder nimm eine andere';
+      } else if (P.holding) {
+        prompt = '<kbd>LMB</kbd> / <kbd>G</kbd> <b class="kill">Werfen</b>';
       } else if (this.findFinisherTarget(P)) {
         prompt = '<kbd>LMB</kbd> <b class="kill">Todesstoß</b>';
       } else {
@@ -1126,6 +1631,7 @@ class Game {
 
   // ------------------------------------------------------------------ camera
   updateCamera(dt) {
+    if (this.versus.active) { this.versus.camera(dt); return; }
     const P = this.player;
     const tgt = P.state === 'active'
       ? _a.copy(P.parts.torso.position).add(_b.set(0, 0.42, 0))
@@ -1168,12 +1674,38 @@ class Game {
     const frozen = this.timeScale < 0.1;
     const P = this.player;
 
+    // the finishing blow once more, slowly: nothing else moves meanwhile
+    if (this.replay.active) {
+      this.replay.update(realDt, frame);
+      if (this.replay.active) { this.cine.uniforms.time.value += realDt; this.composer.render(); return; }
+    }
+
     if (!frozen) {
-      if (P.state === 'active') this.ctl.update(dt, frame);
-      else this.ctl.lookOnly(frame);
-      for (const e of this.npcs) e.brain.update(dt);
-      for (const k of this.fighters) k.update(dt);
-    } else if (frame.lmbPressed && !this.ctl.free) this.ctl.buffer = 0.3;   // don't swallow a click during hit-stop
+      if (this.timers.length) {
+        const due = [];
+        this.timers = this.timers.filter((t) => { t.t -= dt; if (t.t <= 0) { due.push(t); return false; } return true; });
+        for (const t of due) t.fn();
+      }
+      if (this.standoff.active) this.standoff.update(dt, frame);
+      else {
+        if (P.state === 'active') this.ctl.update(dt, frame);
+        else this.ctl.lookOnly(frame);
+        for (const e of this.npcs) e.brain.update(dt);
+      }
+      this.bind.update(dt);
+      // the man in hand does not stay there for ever
+      if (P.holding) { P.heldT -= dt; if (P.heldT <= 0 || P.holding.state !== 'active') this.throwHeld(P, 0.35); }
+      for (const k of this.fighters) {
+        if (k.isPlayer || k.human) { this.mantle(k); if (!k.airborne) k.mantleSaid = false; }
+        k.update(dt);
+      }
+      for (const h of this.horses) h.update(dt);
+      this.updateThrown(dt);
+      this.fire.update(dt);
+    } else if (frame.lmbPressed && !this.ctl.free) {
+      this.ctl.buffer = 0.3;   // don't swallow a click during hit-stop
+      if (P.bound) this.bind.push(P);
+    }
 
     // fixed-step physics
     this.acc += dt;
@@ -1195,12 +1727,16 @@ class Game {
     }
 
     for (const k of this.fighters) k.syncVisuals(dt);
+    this.replay.record(realDt);
+    this.versus.update(realDt);
+    this.perks.update(realDt);
+    this.weather.update(realDt);
     // sandbox: after going down the player is patched up and rises again
     const down = P.dead || (P.state === 'ragdoll' && !P.inj.canStand);
     this.playerDownT = down ? this.playerDownT + realDt : 0;
     if (down && this.isRun && !this.runOver) this.endRun();
     if (down && this.playerDownT > 6 && this.isRun) this.resetArena();
-    else if (down && this.playerDownT > 6) {
+    else if (down && this.playerDownT > 6 && this.mode !== 'versus') {
       const at = P.getPos(new THREE.Vector3());
       const r = Math.hypot(at.x, at.z);
       if (r > 11.5) at.multiplyScalar(11.5 / r);
@@ -1271,6 +1807,32 @@ const CINEMATIC = {
       gl_FragColor = vec4(max(c, 0.0), 1.0);
     }`,
 };
+
+/** What an archer or gunner carries in the left hand (the forearm runs along -y, the hand is at its end). */
+function rangedProp(kind) {
+  const g = new THREE.Group();
+  const wood = new THREE.MeshStandardMaterial({ color: 0x3a2618, roughness: 0.8 });
+  if (kind === 'bow') {
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.013, 6, 18, Math.PI * 0.86), wood);
+    bow.rotation.z = Math.PI + 0.22;
+    bow.position.y = 0.1;
+    g.add(bow);
+    const string = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.88, 4), new THREE.MeshBasicMaterial({ color: 0xd8d0c0 }));
+    string.rotation.z = Math.PI / 2;
+    string.position.y = 0.0;
+    g.add(string);
+  } else {
+    const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.02, 1.05, 8), new THREE.MeshStandardMaterial({ color: 0x1c1c20, metalness: 0.8, roughness: 0.4 }));
+    barrel.position.y = -0.3;
+    g.add(barrel);
+    const stock = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.6, 0.07), wood);
+    stock.position.set(0, 0.12, 0.02);
+    g.add(stock);
+  }
+  g.position.y = -0.3;
+  g.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 
 /** Paper → amber → red → black, by injury 0..1. */
 function injuryColor(v) {

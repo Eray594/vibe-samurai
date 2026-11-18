@@ -171,6 +171,22 @@ export class Samurai {
     this.blendFrom = null;
     this.staggerT = 0;
     this.hitFlash = 0;
+    this.human = !!opts.human;   // steered by a second player
+    this.groundY = 0;            // height of whatever is under the feet (platforms)
+    this.mountH = 0;             // sitting on a horse: how far above the ground
+    this.horse = null;
+    this.slideT = 0;             // sliding under blows
+    this.wallJumps = 0;
+    this.sweepJumpT = 0;         // just jumped a leg sweep: the kick that follows is a counter
+    this.heldBy = null;          // grabbed by the collar
+    this.holding = null;
+    this.heldT = 0;
+    this.thrownT = 0;            // flying after being thrown: bowls others over
+    this.bound = false;          // blades locked with an opponent
+    this.aimT = 0;               // ranged: drawing / aiming
+    this.atk = null;             // the cut being played right now (set by the controller)
+    this.postureMul = 1;         // stance: how hard the cuts press on a guard
+    this.dodge = null;           // { speed, time, iframe, cd }: step profile (light fighters go further)
 
     const { parts, mats } = buildParts(this.style);
     this.parts = parts;
@@ -351,6 +367,9 @@ export class Samurai {
     this.dashCd = Math.max(0, this.dashCd - dt);
     this.iframeT = Math.max(0, this.iframeT - dt);
     this.kickCd = Math.max(0, this.kickCd - dt);
+    this.slideT = Math.max(0, this.slideT - dt);
+    this.sweepJumpT = Math.max(0, this.sweepJumpT - dt);
+    if (this.heldBy && (this.state !== 'active' || this.heldBy.state !== 'active' || this.heldBy.holding !== this)) this.heldBy = null;
     if (this.state === 'active') {
       if (this.ghostT > 0) {
         this.ghostT -= dt;
@@ -364,7 +383,7 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : 0.07;
+    const sit = this.slideT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : 0.07;
     this.crouch += (sit - this.crouch) * dampFactor(9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
@@ -416,10 +435,21 @@ export class Samurai {
     const bal = this.balance;
     const legs = this.inj.legStrength;
     // --- vertical support ("legs"): wounded legs sag and buckle
-    const y = b.position.y;
-    if (this.airborne && y <= STAND_H + 0.02 && b.velocity.y <= 0) {
+    this.groundY = this.game.groundAt ? this.game.groundAt(b.position.x, b.position.z, b.position.y - STAND_H - this.mountH) : 0;
+    const y = b.position.y - this.groundY - this.mountH;
+    if (this.airborne && b.velocity.y <= 0.05 && (y <= STAND_H + 0.02 || (y <= STAND_H + 0.14 && b.velocity.y > -0.4))) {
       this.airborne = false;
+      this.wallJumps = 0;
       this.game.onFighterLand?.(this, -b.velocity.y);
+    } else if (!this.airborne && y > STAND_H + 0.4) this.airborne = true;     // walked off an edge
+    if (this.heldBy) {
+      // dragged along in front of whoever has the collar
+      const h = this.heldBy, hp = h.core.position, f = h.forward(T.fwd);
+      const tx = hp.x + f.x * 0.82, tz = hp.z + f.z * 0.82;
+      b.velocity.x = clamp((tx - b.position.x) * 16, -12, 12) + h.core.velocity.x * 0.5;
+      b.velocity.z = clamp((tz - b.position.z) * 16, -12, 12) + h.core.velocity.z * 0.5;
+      this.intent.yaw = h.yawActual;
+      this.intent.move.set(b.velocity.x, 0, b.velocity.z);
     }
     if (!this.airborne && y < STAND_H + 0.35) {
       const support = (0.35 + 0.65 * bal) * (0.55 + 0.45 * legs);
@@ -432,10 +462,12 @@ export class Samurai {
     // --- horizontal locomotion
     const mv = this.intent.move;
     const mob = 0.2 + 0.8 * legs;
-    let ax = (mv.x * mob - b.velocity.x) * 14, az = (mv.z * mob - b.velocity.z) * 14;
-    let maxA = 34 * (0.25 + 0.75 * bal) * (0.4 + 0.6 * legs);
+    const grip = this.mountH > 0 ? 1 : (this.game.grip ?? 1);       // rain: the gravel is slick
+    let ax = (mv.x * mob - b.velocity.x) * 14 * grip, az = (mv.z * mob - b.velocity.z) * 14 * grip;
+    let maxA = 34 * (0.25 + 0.75 * bal) * (0.4 + 0.6 * legs) * (0.3 + 0.7 * grip);
     if (this.airborne) maxA *= 0.45;
     if (this.dashT > 0) maxA = 0;
+    if (this.slideT > 0) { maxA = 0; b.velocity.x *= 1 - 1.1 * h; b.velocity.z *= 1 - 1.1 * h; }
     const al = Math.hypot(ax, az);
     if (al > maxA) { ax *= maxA / al; az *= maxA / al; }
     C.v.set(m * ax, 0, m * az);
@@ -562,6 +594,13 @@ export class Samurai {
     }
     this.brokenT = 0;
     this.attackPhase = null;
+    this.atk = null;
+    this.slideT = 0;
+    this.bound = false;
+    this.aimT = 0;
+    if (this.holding) { this.holding.heldBy = null; this.holding = null; }
+    this.heldBy = null;
+    if (this.mountH > 0) { this.mountH = 0; this.horse?.onRiderDown(); }
     this.game.onFighterDown(this);
   }
 
@@ -612,6 +651,8 @@ export class Samurai {
     this.posture = 0;
     this.brokenT = 0;
     this.blendT = 1;
+    this.slideT = 0; this.bound = false; this.heldBy = null; this.thrownT = 0;
+    if (this.holding) { this.holding.heldBy = null; this.holding = null; }
     if (this.weapon) {
       this.weapon.attach();
       this.prevTargetPos = null;
@@ -626,24 +667,50 @@ export class Samurai {
     if (this.state !== 'active' || this.dashCd > 0 || this.airborne) return false;
     const legs = this.inj.legStrength;
     if (legs < 0.35) return false;
+    if (this.heldBy || this.mountH > 0 || this.bound) return false;
     const b = this.core;
-    const sp = 10 * this.speedMul * (0.5 + 0.5 * legs);
+    const dg = this.dodge || { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
+    const wet = 1 + (1 - (this.game.grip ?? 1)) * 0.5;                 // you keep sliding on wet ground
+    const sp = 10 * this.speedMul * dg.speed * (0.5 + 0.5 * legs);
     b.velocity.x = dir.x * sp;
     b.velocity.z = dir.z * sp;
     // lean into the dash
     b.angularVelocity.x += dir.z * -2.2;
     b.angularVelocity.z += dir.x * 2.2;
-    this.dashT = 0.19;
-    this.iframeT = 0.28;
-    this.dashCd = this.isPlayer ? 0.42 : 1.2;
+    this.dashT = dg.time * wet;
+    this.iframeT = dg.iframe;
+    this.slideT = 0;
+    this.dashCd = this.isPlayer || this.human ? dg.cd : 1.2;
     this.game.onFighterDash?.(this, dir);
     return true;
   }
 
-  jump() {
-    if (this.state !== 'active' || this.airborne || this.inj.legStrength < 0.45) return false;
-    this.core.velocity.y = 5.3 * (0.6 + 0.4 * this.inj.legStrength);
+  jump(boost = 1) {
+    if (this.state !== 'active' || this.airborne || this.inj.legStrength < 0.45 || this.heldBy || this.mountH > 0 || this.bound) return false;
+    this.core.velocity.y = 5.3 * boost * (0.6 + 0.4 * this.inj.legStrength);
     this.airborne = true;
+    this.slideT = 0;
+    return true;
+  }
+
+  /** Push off a wall in mid-air: away from it and up again. */
+  wallJump(nx, nz) {
+    if (this.state !== 'active' || !this.airborne || this.wallJumps >= 2 || this.inj.legStrength < 0.45) return false;
+    const v = this.core.velocity;
+    v.x = nx * 6.2; v.z = nz * 6.2;
+    v.y = 6.0 * (0.6 + 0.4 * this.inj.legStrength);
+    this.wallJumps++;
+    return true;
+  }
+
+  /** Drop out of a sprint and slide along the ground, under high blows. */
+  startSlide(dir) {
+    if (this.state !== 'active' || this.airborne || this.slideT > 0 || this.dashT > 0 || this.inj.legStrength < 0.5 || this.holding) return false;
+    const b = this.core;
+    const sp = 9.2 * this.speedMul * (1 + (1 - (this.game.grip ?? 1)) * 0.3);
+    b.velocity.x = dir.x * sp;
+    b.velocity.z = dir.z * sp;
+    this.slideT = 0.62;
     return true;
   }
 
@@ -869,6 +936,7 @@ export class Samurai {
     const p = this.core.position, q = w.body.position;
     if (Math.hypot(p.x - q.x, p.z - q.z) > range || q.y > 2.2) return false;
     w.attach();
+    w.thrower = null;
     this.inj.disarmed = false;
     this.prevTargetPos = null;
     this.computeWeaponTarget(0);
@@ -898,8 +966,9 @@ export class Samurai {
   }
 
   /** Front kick. `power` > 1 for a running kick. The hit itself lands a moment later (game.onKick). */
-  startKick(power = 1) {
-    if (this.state !== 'active' || this.kickT > 0 || this.kickCd > 0 || this.airborne || this.brokenT > 0 || this.inj.legStrength < 0.4) return false;
+  startKick(power = 1, air = false) {
+    if (this.state !== 'active' || this.kickT > 0 || this.kickCd > 0 || (this.airborne && !air) || this.brokenT > 0 || this.inj.legStrength < 0.4) return false;
+    if (this.heldBy || this.mountH > 0 || this.bound) return false;
     this.kickT = KICK_DUR;
     this.kickPower = power;
     this.kickHit = false;
@@ -974,6 +1043,7 @@ export class Samurai {
     }
     if (!handR) handR = this.localToWorld(L(0.25, 0.12, 0.12), new THREE.Vector3());
     // a free hand goes to a bad body wound
+    if (this.aimT > 0 && !this.severed.has('fArmL')) handL = this.localToWorld(L(-0.12, 0.46, 0.56), new THREE.Vector3());   // bow / gun raised
     if (!handL) handL = this.localToWorld(this.inj.parts.torso > 0.45 ? L(-0.06, 0.2, 0.2) : L(-0.27, 0.16, 0.1), new THREE.Vector3());
     const poleR = T.b.copy(T.right).multiplyScalar(0.7).add(T.e.set(0, -0.7, 0)).addScaledVector(T.back, 0.3);
     solveTwoBone(shR, handR, ARM.upper, ARM.fore, poleR, T.mid, T.end);
@@ -991,22 +1061,31 @@ export class Samurai {
     const run = clamp((speed - 4) / 4, 0, 1);
     this.gaitPhase += dt * (2.5 + speed * 2.7) * (speed > 0.15 ? 1 : 0);
     // lean: into the run, back for a kick, hunched over a body wound
-    const leanTo = this.kickT > 0 ? -0.24 : (this.sprinting ? 0.32 : 0.06) * clamp(speed / 6, 0, 1) + 0.2 * Math.min(1, this.inj.parts.torso);
-    if (dt > 0) this.runLean += (leanTo - this.runLean) * dampFactor(this.kickT > 0 ? 16 : 6, dt);
+    const leanTo = this.slideT > 0 ? -0.5 : this.kickT > 0 ? -0.24 : (this.sprinting ? 0.32 : 0.06) * clamp(speed / 6, 0, 1) + 0.2 * Math.min(1, this.inj.parts.torso);
+    if (dt > 0) this.runLean += (leanTo - this.runLean) * dampFactor(this.kickT > 0 || this.slideT > 0 ? 16 : 6, dt);
+    const gy = this.groundY;
     const s = clamp(speed / 3, 0, 1);
     const mdx = speed > 0.05 ? vx / speed : 0, mdz = speed > 0.05 ? vz / speed : 0;
     for (const [side, name, stance] of [[1, 'R', 0.2], [-1, 'L', -0.2]]) {
       const hip = T.a.set(side * LEG.hipX, LEG.hipY, 0).applyQuaternion(cq).add(cp).clone();
       const ph = this.gaitPhase + (side > 0 ? 0 : Math.PI);
-      const foot = T.e.set(cp.x, 0, cp.z)
+      const foot = T.e.set(cp.x, gy, cp.z)
         .addScaledVector(T.right, side * 0.15)
         .addScaledVector(T.fwd, stance * (1 - s));
       const legDmg = Math.min(1, this.inj.parts['leg' + name]);
       const stride = (0.3 + 0.16 * run) * (1 - 0.6 * legDmg);
       foot.x += mdx * Math.sin(ph) * stride * s;
       foot.z += mdz * Math.sin(ph) * stride * s;
-      foot.y = 0.085 + Math.max(0, Math.cos(ph)) * (0.13 + 0.1 * run) * s * (1 - 0.7 * legDmg);
-      if (this.airborne || cp.y > STAND_H + 0.08) {
+      foot.y = gy + 0.085 + Math.max(0, Math.cos(ph)) * (0.13 + 0.1 * run) * s * (1 - 0.7 * legDmg);
+      if (this.mountH > 0) {
+        // astride: knees out, feet in the stirrups
+        foot.copy(hip).addScaledVector(T.right, side * 0.3).addScaledVector(T.fwd, 0.12);
+        foot.y = hip.y - 0.66;
+      } else if (this.slideT > 0) {
+        // one leg stretched out in front, the other folded under
+        foot.copy(hip).addScaledVector(T.fwd, side > 0 ? 0.78 : 0.3).addScaledVector(T.right, side * 0.08);
+        foot.y = gy + 0.09;
+      } else if (this.airborne || cp.y - gy > STAND_H + 0.08) {
         foot.copy(hip).addScaledVector(T.fwd, side > 0 ? -0.12 : 0.18);
         foot.y = hip.y - 0.62;
       }

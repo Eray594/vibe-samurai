@@ -123,10 +123,10 @@ function makeBannerTexture(color, crest) {
 }
 
 const SKY = {
-  uniforms: { sunDir: { value: SUN_DIR } },
+  uniforms: { sunDir: { value: SUN_DIR }, dim: { value: 1 }, sat: { value: 1 }, stars: { value: 0 } },
   vertexShader: `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
-    uniform vec3 sunDir; varying vec3 vDir;
+    uniform vec3 sunDir; uniform float dim, sat, stars; varying vec3 vDir;
     void main() {
       vec3 d = normalize(vDir);
       float h = d.y;
@@ -141,6 +141,14 @@ const SKY = {
       float band = sin(h * 70.0 + sin(d.x * 5.0 + d.z * 3.0) * 2.2) * 0.5 + 0.5;
       c = mix(c, c * vec3(0.55, 0.42, 0.55), smoothstep(0.7, 1.0, band) * smoothstep(0.3, 0.04, h) * smoothstep(0.0, 0.03, h) * 0.6);
       c = mix(c, vec3(0.05, 0.045, 0.07), smoothstep(0.0, -0.08, h));
+      c = mix(vec3(dot(c, vec3(0.3, 0.5, 0.2))), c, sat) * dim;
+      if (stars > 0.0) {
+        vec3 g = floor(d * 140.0);
+        float n = fract(sin(dot(g, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+        c += vec3(0.8, 0.85, 1.0) * step(0.9965, n) * stars * smoothstep(0.02, 0.3, h);
+        float m = max(dot(d, normalize(vec3(0.45, 0.5, 0.74))), 0.0);
+        c += vec3(0.9, 0.93, 1.0) * (smoothstep(0.9982, 0.9987, m) + pow(m, 60.0) * 0.25) * stars;
+      }
       gl_FragColor = vec4(c, 1.0);
     }`,
 };
@@ -163,9 +171,12 @@ export class Arena {
     const sky = new THREE.Mesh(new THREE.SphereGeometry(230, 32, 16), new THREE.ShaderMaterial({ ...SKY, side: THREE.BackSide, depthWrite: false, fog: false }));
     sky.renderOrder = -10;
     scene.add(sky);
+    this.sky = sky;
 
     // ---- lights: low sun, cool sky fill
-    scene.add(new THREE.HemisphereLight(0x8c7fb0, 0x4a3628, 1.0));
+    this.hemi = new THREE.HemisphereLight(0x8c7fb0, 0x4a3628, 1.0);
+    scene.add(this.hemi);
+    
     const sun = new THREE.DirectionalLight(0xffa56a, 2.1);
     sun.position.copy(SUN_DIR).multiplyScalar(45);
     sun.castShadow = true;
@@ -175,6 +186,7 @@ export class Arena {
     sun.shadow.bias = -0.0005;
     sun.shadow.normalBias = 0.03;
     scene.add(sun);
+    this.sunLight = sun;
 
     // ---- materials
     const gravel = makeGravel();

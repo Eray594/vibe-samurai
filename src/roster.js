@@ -78,7 +78,38 @@ export const TYPES = {
     ],
   },
 };
-export const TYPE_ORDER = ['ashigaru', 'ronin', 'samurai', 'oni', 'daimyo'];
+// rank: who leads (the highest rank alive is the leader). courage: 0 = runs at the first head that rolls.
+// heavy: chance that an attack is a slow, guard-crushing blow that should be dodged, not blocked.
+Object.assign(TYPES.ashigaru, { rank: 1, courage: 0.3, heavy: 0 });
+Object.assign(TYPES.ronin, { rank: 2, courage: 0.6, heavy: 0.08 });
+Object.assign(TYPES.samurai, { rank: 3, courage: 0.9, heavy: 0.14 });
+Object.assign(TYPES.oni, { rank: 3, courage: 1, heavy: 0.4 });
+Object.assign(TYPES.daimyo, { rank: 5, courage: 1, heavy: 0.25 });
+Object.assign(TYPES, {
+  archer: {
+    key: 'archer', name: 'Bogenschütze', weapons: ['wakizashi'], ranged: 'bow', rank: 1, courage: 0.2, heavy: 0,
+    aggr: [0.8, 1.0], block: [0.1, 0.25], deflect: 0, posture: 0.7, combo: 1, windMul: 1.25,
+    styles: [
+      { cloth: 0x3c4630, hakama: 0x22241c, lace: 0x8a7a50, head: 'jingasa', prot: 0.2, saya: false },
+      { cloth: 0x4a3a2a, hakama: 0x2a2620, lace: 0x8a7a50, head: 'band', prot: 0.15, pattern: 'stripe' },
+    ],
+  },
+  gunner: {
+    key: 'gunner', name: 'Teppō-Schütze', weapons: ['wakizashi'], ranged: 'gun', rank: 1, courage: 0.25, heavy: 0,
+    aggr: [0.8, 0.95], block: [0.1, 0.2], deflect: 0, posture: 0.8, combo: 1, windMul: 1.3,
+    styles: [
+      { cloth: 0x2a2c34, hakama: 0x1c1c20, armor: 0x26262a, lace: 0x6a1a1a, head: 'jingasa', prot: 0.36, saya: false },
+    ],
+  },
+  rider: {
+    key: 'rider', name: 'Reiter', weapons: ['naginata', 'yari'], mounted: true, rank: 3, courage: 0.95, heavy: 0,
+    aggr: [1.1, 1.2], block: [0.15, 0.3], deflect: 0.05, posture: 1.3, combo: 1, windMul: 0.8,
+    styles: [
+      { cloth: 0x2a2018, hakama: 0x1a1612, armor: 0x3a2a14, lace: 0xb0502a, head: 'kabuto', crest: 'kuwagata', sode: true, suneate: true, prot: 0.6, sashimono: 0x8a1418 },
+    ],
+  },
+});
+export const TYPE_ORDER = ['ashigaru', 'ronin', 'samurai', 'oni', 'daimyo', 'archer', 'gunner', 'rider'];
 
 /** Allies who fight at the player's side wear blue. */
 export const ALLY_STYLE = {
@@ -95,6 +126,9 @@ export function randomType(difficulty = 0.3) {
     samurai: 0.25 + difficulty * 0.9,
     oni: 0.05 + difficulty * 0.45,
     daimyo: difficulty > 0.6 ? (difficulty - 0.6) * 0.5 : 0,
+    archer: 0.22 + difficulty * 0.2,
+    gunner: difficulty > 0.2 ? 0.08 + difficulty * 0.2 : 0,
+    rider: difficulty > 0.3 ? (difficulty - 0.3) * 0.35 : 0,
   };
   let total = 0;
   for (const k in w) total += w[k];
