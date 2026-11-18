@@ -3,6 +3,7 @@
 // down until the object comes apart into loose physical pieces.
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { mergeStatic } from './perf.js';
 import { materials, setGroup, rand, snapPrev, syncMesh } from './physics.js';
 
 const KINDS = {
@@ -70,6 +71,14 @@ export class Breakables {
 
   get lanterns() { return this.items.filter((i) => i.kind === 'lantern' && !i.broken); }
 
+  /** How many lanterns actually light the yard (the rest only glow): every light costs on every pixel. */
+  setLightBudget(n) {
+    this.lightBudget = n;
+    const all = this.items.filter((i) => i.kind === 'lantern' && i.light);
+    const step = all.length > n ? Math.round(all.length / n) : 1;
+    all.forEach((it, i) => { it.lit = i % step === 0; it.light.visible = it.lit; it.boost = all.length > n ? 1.5 : 1; });
+  }
+
   // ------------------------------------------------------------------ building
   add(kind, x, z, o = {}) {
     const K = KINDS[kind], G = this.geo, M = this.mat, { scene, world } = this.game;
@@ -125,6 +134,7 @@ export class Breakables {
       });
     }
     world.addBody(body);
+    if (kind === 'screen' || kind === 'barrel') mergeStatic(mesh);      // dozens of slats and panes: one draw call per material
     scene.add(mesh);
     syncMesh(mesh, body);
     this.items.push(item);
@@ -251,7 +261,7 @@ export class Breakables {
       if (it.K.dynamic) syncMesh(it.mesh, it.body);
       if (it.light) {
         const f = 0.85 + Math.sin(t * 9 + it.phase) * 0.06 + Math.sin(t * 21.7 + it.phase * 2) * 0.04 + Math.random() * 0.05;
-        it.light.intensity = 11 * f;
+        it.light.intensity = 11 * f * (it.boost || 1);
       }
     }
   }
@@ -267,5 +277,6 @@ export class Breakables {
     this.pending = [];
     this.arena.obstacles = this.arena.obstacles.filter((o) => o[2] !== 0.75);
     this.spawnAll();
+    if (this.lightBudget) this.setLightBudget(this.lightBudget);
   }
 }

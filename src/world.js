@@ -116,8 +116,8 @@ export class Fire {
     this.game = game;
     this.fires = [];
     this.lights = [];
-    for (let i = 0; i < 3; i++) {
-      const l = new THREE.PointLight(0xff7a30, 0, 9, 2);
+    for (let i = 0; i < 1; i++) {
+      const l = new THREE.PointLight(0xff7a30, 0, 12, 2);
       game.scene.add(l);
       this.lights.push(l);
     }
@@ -188,7 +188,7 @@ export class Fire {
         this.fires.splice(i, 1);
       }
     }
-    // the three biggest fires light the yard
+    // one light for all of it (each light costs on every pixel): it sits on the oldest fire
     for (let i = 0; i < this.lights.length; i++) {
       const l = this.lights[i], f = this.fires[i];
       if (!f) { l.intensity = 0; continue; }

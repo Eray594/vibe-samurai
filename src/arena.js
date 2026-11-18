@@ -1,6 +1,7 @@
 // The courtyard: a walled dōjō yard at dusk. Raked gravel, plaster walls with tiled copings, stone
 // lanterns, cherry trees shedding petals, a torii and a pagoda beyond the wall, straw mats to cut.
 import * as THREE from 'three';
+import { mergeStatic } from './perf.js';
 import * as CANNON from 'cannon-es';
 import { materials, setGroup, rand, snapPrev, syncMesh } from './physics.js';
 import { buildWeaponModel, WEAPONS, WEAPON_ORDER } from './weapons.js';
@@ -314,7 +315,7 @@ export class Arena {
       torii.add(tip);
     }
     torii.position.set(0, 0, -20.5);
-    scene.add(torii);
+    scene.add(mergeStatic(torii));
 
     // pagoda
     const pag = new THREE.Group();
@@ -334,7 +335,7 @@ export class Arena {
     spire.position.y = y + 1.9;
     pag.add(spire);
     pag.position.set(-27, 0, -36);
-    scene.add(pag);
+    scene.add(mergeStatic(pag));
 
     // far mountains
     const mk = (x, z, r, h) => {
@@ -395,7 +396,7 @@ export class Arena {
         g.add(b);
       }
       g.position.set(x, 0, z);
-      scene.add(g);
+      scene.add(mergeStatic(g));
       if (collide) { staticBox(0.5, 3, 0.5, x, 1.5, z, 0, 'wood'); this.obstacles.push([x, z, 0.85]); }
     };
     this.treeSpots = [];
@@ -542,6 +543,7 @@ export class Arena {
     scene.add(g);
     staticBox(3.0, 1.7, 0.7, origin.x, 0.85, origin.z, 0, 'wood');
 
+    mergeStatic(g);
     this.rack = { origin, slots: [] };
     WEAPON_ORDER.forEach((key, i) => {
       const def = WEAPONS[key];
@@ -550,6 +552,7 @@ export class Arena {
       const baseY = def.type === 'polearm' ? def.shaftBack + 0.18 : def.gripLen + 0.2;
       model.position.set(x, baseY, 0.04);
       model.rotation.x = -0.1;
+      model.userData.keep = true;
       g.add(model);
       this.rack.slots.push({ key, mesh: model, world: origin.clone().add(new THREE.Vector3(x, 0, 0.7)) });
     });
@@ -575,7 +578,7 @@ export class Arena {
       peg.position.y = 0.25;
       stand.add(peg);
       stand.position.set(x, 0, z);
-      scene.add(stand);
+      scene.add(mergeStatic(stand));
       const mesh = sh(new THREE.Mesh(this.matGeo, M.straw));
       scene.add(mesh);
       const mat = { x, z, base: 0.4, top: 1.55, full: 1.55, mesh, body: null };

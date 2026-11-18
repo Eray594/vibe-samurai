@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
+import { mergeStatic } from './perf.js';
 import {
   materials, setGroup, toC, toT, qToT, quatError, worldInertiaMul, pointVelocity, clampLen,
   snapPrev, syncMesh,
@@ -232,7 +233,7 @@ export function buildWeaponModel(def, bladeMat = MAT.steel) {
   else if (def.type === 'sword') buildSword(g, def, bladeMat);
   else if (def.type === 'polearm') buildPolearm(g, def, bladeMat);
   else buildClub(g, def);
-  return g;
+  return mergeStatic(g);
 }
 
 /** Collision shapes, tagged so a hit with the shaft or grip counts as a blunt knock, not a cut. */

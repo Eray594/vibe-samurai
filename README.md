@@ -19,6 +19,10 @@ macOS/Linux nehmen, was vorhanden ist: `python3`, `node`, `php` oder `ruby`. Von
 python3 -m http.server 8765      # oder: node tools/serve.mjs
 ```
 
+**Leistung:** Der Knopf „Auto · … fps“ in der Leiste zeigt die Bildrate. In der Einstellung *Auto*
+senkt oder hebt das Spiel Auflösung, Schatten, Leuchteffekt und Laternenlichter von selbst, um die
+Bildrate des Bildschirms zu halten. Ein Klick schaltet auf feste Stufen (Niedrig, Mittel, Hoch).
+
 Braucht einen aktuellen Browser mit WebGL 2 und Pointer Lock (getestet in Chrome; Edge, Firefox
 und Safari nutzen dieselben Web-Standards).
 
@@ -167,6 +171,7 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 | `world.js` | Wetter und Tageszeit, Feuer, das Podest zum Klettern |
 | `mount.js` | Pferd für berittene Gegner |
 | `extras.js` | Klingenbindung, Duell-Eröffnung, Verbesserungen, Wiederholung, 2-Spieler-Modus |
+| `perf.js` | Automatische Grafikqualität, Zusammenfassen statischer Geometrie |
 | `physics.js` | Welt, Kollisionsgruppen, Mathe-Helfer |
 
 Balance-Stellschrauben: `WEAPONS` in `weapons.js`, `TYPES`/`SKINS` in `roster.js`, `POSTURE` und

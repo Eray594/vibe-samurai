@@ -20,6 +20,7 @@ import { GUARD, POSTURE, DEFLECT_WINDOW, STANCES } from './combat.js';
 import { Weather, Fire, buildPlatforms } from './world.js';
 import { Horse } from './mount.js';
 import { BladeBind, Standoff, Perks, Replay, Versus } from './extras.js';
+import { Quality } from './perf.js';
 
 const MODES = {
   duel: { name: 'Duell', call: 'DUELL' },
@@ -51,11 +52,11 @@ const _cv2 = new CANNON.Vec3();
 class Game {
   constructor() {
     this.canvas = document.getElementById('game');
-    const renderer = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, powerPreference: 'high-performance' });
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    const renderer = this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
+    renderer.setPixelRatio(1);
     renderer.setSize(innerWidth, innerHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.1;
 
@@ -143,6 +144,7 @@ class Game {
     this.versus = new Versus(this);
 
     this.setupUI();
+    this.quality = new Quality(this);
     this.spawnWave(true);
     addEventListener('resize', () => this.resize());
     this.clock = new THREE.Clock();
@@ -158,7 +160,7 @@ class Game {
     this.renderer.setSize(innerWidth, innerHeight);
     this.composer.setSize(innerWidth, innerHeight);
     this.cine.uniforms.res.value.set(innerWidth, innerHeight);
-    this.effects.setPixelScale(innerHeight);
+    this.effects.setPixelScale(innerHeight * this.renderer.getPixelRatio());
   }
 
   // ------------------------------------------------------------------ spawning
@@ -1403,7 +1405,7 @@ class Game {
   hurtFlash(dmg) {
     const f = this.ui.flash;
     f.style.transition = 'none';
-    f.style.opacity = String(clamp(dmg / 50, 0.2, 0.6));
+    f.style.opacity = String(clamp(dmg / 50, 0.2, 0.6) * 0.55);
     requestAnimationFrame(() => { f.style.transition = 'opacity 0.5s'; f.style.opacity = '0'; });
   }
 
@@ -1416,7 +1418,7 @@ class Game {
       weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), death: $('death'),
       posture: $('posture-fill'), postureBox: $('posture'), tools: $('tools'), mode: $('mode-label'), skin: $('skin-select'),
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
-      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'),
+      slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'),
     };
     const start = () => { this.audio.init(); this.input.lock(); };
     $('btn-start').addEventListener('click', start);
@@ -1434,6 +1436,7 @@ class Game {
     btn('btn-reset', () => this.resetArena());
     btn('btn-slow', () => this.toggleSlowmo());
     btn('btn-weather', () => this.nextWeather());
+    btn('btn-quality', () => this.callout('GRAFIK: ' + up(this.quality.cycle()), null, 'small'));
 
     const wb = $('weapon-buttons');
     WEAPON_ORDER.forEach((key, i) => {
@@ -1662,7 +1665,9 @@ class Game {
 
   // ------------------------------------------------------------------ main loop
   frame() {
-    const realDt = Math.min(this.clock.getDelta(), 1 / 20);
+    const rawDt = this.clock.getDelta();
+    this.quality.update(rawDt);
+    const realDt = Math.min(rawDt, 1 / 20);
     const frame = this.input.consume();
     this.handleKeys(frame);
 
