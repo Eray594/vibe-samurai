@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HEAVY STEEL – Samurai-Sandbox</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three.module.js",
+    "three/addons/": "./vendor/jsm/",
+    "cannon-es": "./vendor/cannon-es.js"
+  }
+}
+</script>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="flash"></div>
+
+<!-- Top toolbar -->
+<div id="topbar">
+  <div class="logo"><i>鋼</i>HEAVY<span>STEEL</span></div>
+  <div class="group">
+    <button id="btn-spawn" title="Gegner spawnen (R)">Gegner <kbd>R</kbd></button>
+    <select id="enemy-type" title="Gegnertyp"></select>
+    <button id="btn-ally" title="Verbündeten rufen (T)">Verbündeter <kbd>T</kbd></button>
+    <button id="btn-mode" title="Modus wechseln (M)"><b id="mode-label">Duell</b> <kbd>M</kbd></button>
+  </div>
+  <div class="group" id="weapon-buttons"></div>
+  <div class="group">
+    <select id="skin-select" title="Rüstung / Skin (K)"></select>
+    <button id="btn-slow" title="Zeitlupe (Z)">Zeitlupe <kbd>Z</kbd></button>
+    <button id="btn-reset" title="Hof zurücksetzen (Backspace)">Reset <kbd>⌫</kbd></button>
+  </div>
+</div>
+
+<!-- HUD -->
+<div id="hud">
+  <div id="player-panel">
+    <svg id="doll" viewBox="0 0 64 112" aria-label="Zustand">
+      <circle id="d-head" cx="32" cy="11" r="8.5"/>
+      <rect id="d-torso" x="21" y="22" width="22" height="36" rx="5"/>
+      <rect id="d-armL" x="11" y="23" width="8" height="35" rx="4"/>
+      <rect id="d-armR" x="45" y="23" width="8" height="35" rx="4"/>
+      <rect id="d-legL" x="22" y="60" width="9" height="48" rx="4"/>
+      <rect id="d-legR" x="33" y="60" width="9" height="48" rx="4"/>
+    </svg>
+    <div class="info">
+      <div class="label">SAMURAI</div>
+      <div id="status"><div class="ok">Unverletzt</div></div>
+      <div id="stance"><b id="stance-label">Chūdan</b> · <b id="weapon-label">Katana</b></div>
+      <div id="tools">Verbände 3</div>
+    </div>
+  </div>
+  <div id="posture" title="Haltung"><span>Haltung</span><div class="track"><i id="posture-fill"></i></div></div>
+  <div id="score">Besiegt <b id="kills">0</b><span id="wave"></span></div>
+  <div id="prompt"></div>
+  <div id="help">
+    <div class="title">Steuerung <span>(H)</span></div>
+    <div><kbd>WASD</kbd> bewegen · <kbd>Maus</kbd> Kamera</div>
+    <div><kbd>Shift</kbd> Ausweichschritt · halten: Sprint</div>
+    <div><kbd>Space</kbd> Sprung (Angriff in der Luft = Sturzhieb)</div>
+    <div><kbd>LMB</kbd> Hieb · mehrfach: Kombo · halten: schwerer Hieb</div>
+    <div><kbd>RMB</kbd> Deckung · im letzten Moment: <b>Abwehr</b></div>
+    <div><kbd>LMB</kbd> bei gebrochener Haltung: <b>Todesstoß</b></div>
+    <div><kbd>LMB</kbd> gleich nach Abwehr: <b>Konter</b> · im Sprint: <b>Durchschlag</b></div>
+    <div><kbd>F</kbd> Tritt (stößt um, bricht Deckung) · im Sprint: Sprungtritt</div>
+    <div><kbd>Tab</kbd>/<kbd>MMB</kbd> Ziel erfassen · <kbd>Mausrad</kbd> Ziel wechseln</div>
+    <div><kbd>Q</kbd> Kunai · <kbd>C</kbd> Wunden versorgen · <kbd>E</kbd> aufheben</div>
+    <div><kbd>V</kbd> Freie Klinge (Maus führt das Schwert)</div>
+    <div><kbd>1-6</kbd> Waffe · <kbd>K</kbd> Skin · <kbd>R</kbd> Gegner · <kbd>T</kbd> Verbündeter</div>
+    <div><kbd>M</kbd> Modus · <kbd>Z</kbd> Zeitlupe · <kbd>N</kbd> Musik · <kbd>⌫</kbd> Reset</div>
+    <div><kbd>Esc</kbd> Maus freigeben (für die Leiste oben)</div>
+  </div>
+</div>
+<div id="labels"></div>
+<div id="reticle"></div>
+<div id="callouts"></div>
+<div id="kanji"></div>
+
+<div id="overlay">
+  <div class="card">
+    <div class="seal">鋼</div>
+    <h1>HEAVY<span>STEEL</span></h1>
+    <p class="sub">Samurai-Sandbox · Physik-Schwertkampf</p>
+    <p>Jede Klinge hat echtes Gewicht. <b>Blocke</b> mit der rechten Maustaste – hebst du die Deckung
+       erst im letzten Moment, <b>wehrst du ab</b> und brichst die Haltung des Gegners.<br>
+       Ist sie gebrochen: <b>Todesstoß</b>.</p>
+    <button id="btn-start">Klicken zum Kämpfen</button>
+    <p class="hint">Esc gibt die Maus frei · H blendet die Steuerung ein/aus</p>
+  </div>
+</div>
+<div id="death"><div id="death-cause">NIEDERGESTRECKT</div><small id="death-sub">Neuer Versuch …</small></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

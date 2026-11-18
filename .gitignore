@@ -1,0 +1,24 @@
+# Betriebssystem
+.DS_Store
+._*
+Thumbs.db
+Desktop.ini
+
+# Editoren / IDEs
+.vscode/
+.idea/
+*.swp
+*~
+
+# Logs & temporäre Dateien
+*.log
+*.tmp
+
+# Falls später doch mal Tooling dazukommt (vendor/ wird bewusst mit eingecheckt)
+node_modules/
+dist/
+
+# Lokale Umgebungen / Claude-Einstellungen
+.env
+.env.*
+.claude/settings.local.json

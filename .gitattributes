@@ -1,0 +1,4 @@
+# Startskripte brauchen feste Zeilenenden, egal auf welchem System geklont wird
+*.bat     text eol=crlf
+*.sh      text eol=lf
+*.command text eol=lf
