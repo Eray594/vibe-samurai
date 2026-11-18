@@ -12,11 +12,11 @@ $types = @{
 $listener = New-Object System.Net.HttpListener
 $listener.Prefixes.Add("http://localhost:$Port/")
 try { $listener.Start() } catch {
-  Write-Host "Port $Port ist belegt - laeuft HEAVY STEEL schon? Oeffne den Browser trotzdem."
+  Write-Host "Port $Port ist belegt - laeuft VIBE SAMURAI schon? Oeffne den Browser trotzdem."
   Start-Process "http://localhost:$Port/"
   exit 0
 }
-Write-Host "HEAVY STEEL: http://localhost:$Port/   (dieses Fenster schliessen oder Strg+C beendet)"
+Write-Host "VIBE SAMURAI: http://localhost:$Port/   (dieses Fenster schliessen oder Strg+C beendet)"
 if (-not $NoBrowser) { Start-Process "http://localhost:$Port/" }
 
 try {

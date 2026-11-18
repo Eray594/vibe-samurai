@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# HEAVY STEEL starten (Linux / macOS): lokaler Webserver + Browser.
+# VIBE SAMURAI starten (Linux / macOS): lokaler Webserver + Browser.
 # ES-Module brauchen http://, nicht file://. Nimmt, was da ist: python3, python, node, php oder ruby.
 cd "$(dirname "$0")" || exit 1
 PORT="${PORT:-8765}"
@@ -13,7 +13,7 @@ open_browser() {
   fi
 }
 
-echo "HEAVY STEEL läuft auf $URL  –  Beenden mit Strg+C"
+echo "VIBE SAMURAI läuft auf $URL  –  Beenden mit Strg+C"
 open_browser &
 
 if command -v python3 >/dev/null 2>&1; then exec python3 -m http.server "$PORT" --bind 127.0.0.1

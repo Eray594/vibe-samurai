@@ -245,10 +245,10 @@ class Game {
   /** The player fell in survival / chaos: the run is over, note the result and the best so far. */
   endRun() {
     this.runOver = true;
-    const key = 'heavysteel.best.' + this.mode;
+    const key = 'vibesamurai.best.' + this.mode;
     const now = { wave: this.wave, kills: this.kills, time: Math.floor(this.runT) };
     let best = null;
-    try { best = JSON.parse(localStorage.getItem(key)); } catch { /* no storage: just no record */ }
+    try { best = JSON.parse(localStorage.getItem(key) ?? localStorage.getItem('heavysteel.best.' + this.mode)); } catch { /* no storage: just no record */ }
     const score = (r) => (this.mode === 'survival' ? r.wave * 1000 + r.kills : r.kills * 1000 + r.time);
     const record = !best || score(now) > score(best);
     if (record) { best = now; try { localStorage.setItem(key, JSON.stringify(now)); } catch { /* ignore */ } }

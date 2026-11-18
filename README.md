@@ -1,4 +1,4 @@
-# HEAVY STEEL 鋼 – Samurai-Sandbox
+# VIBE SAMURAI 侍 – Samurai-Sandbox
 
 Physik-Schwertkampf im Browser: ein ummauerter Dōjō-Hof in der Abenddämmerung, Klingen mit echtem
 Gewicht, Deckung und Abwehr im letzten Moment, Haltung brechen, Todesstoß.

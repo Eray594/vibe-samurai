@@ -23,4 +23,4 @@ http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
-}).listen(port, '127.0.0.1', () => console.log(`HEAVY STEEL: http://localhost:${port}/  (Strg+C beendet)`));
+}).listen(port, '127.0.0.1', () => console.log(`VIBE SAMURAI: http://localhost:${port}/  (Strg+C beendet)`));
