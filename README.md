@@ -13,6 +13,8 @@ Three.js + cannon-es liegen lokal in `vendor/` – kein Build, keine Installatio
 | **Linux** | `bash start.sh` |
 
 Die Skripte starten einen kleinen lokalen Webserver und öffnen `http://localhost:8765`.
+Läuft das Spiel schon (etwa in einem anderen Terminal-Fenster), öffnet ein zweiter Start einfach nur
+den Browser. Ist der Port von einem anderen Programm belegt, wird der nächste freie genommen.
 macOS/Linux nehmen, was vorhanden ist: `python3`, `node`, `php` oder `ruby`. Von Hand geht auch:
 
 ```bash
