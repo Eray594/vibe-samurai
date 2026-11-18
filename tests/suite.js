@@ -153,7 +153,14 @@ g.menu.toggle(true); check('Menü öffnet mit Dōjō-Angeboten', g.menu.open && 
 g.setMode('training'); step(10); const drills = [];
 for (let i = 0; i < 7; i++) {
   const d = g.training.drill, names = new Set(); P.iframeT = 0;
-  for (let f = 0; f < 300; f++) { g.frame(); const a = g.livingEnemies[0]?.brain.runner.a; if (a) names.add(a.name); }
+  for (let f = 0; f < 600; f++) {
+    // the partner is kept eager, so that whether he attacks within the time does not hang on his mood
+    const en = g.livingEnemies[0];
+    if (en && d !== 'passive') en.brain.cooldown = Math.min(en.brain.cooldown, 0.2);
+    g.frame();
+    const a = g.livingEnemies[0]?.brain.runner.a;
+    if (a) names.add(a.name);
+  }
   drills.push(d + ':' + [...names].join('+')); press('KeyO'); step(3);
 }
 check('Training: Stoß-Übung macht nur Stöße', drills.includes('thrust:tsuki'), drills.join(' '));
