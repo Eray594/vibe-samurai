@@ -83,6 +83,10 @@ export const EN = {
   'Modus (Freies Spiel) ·': 'mode (free play) ·', 'Wetter ·': 'weather ·', 'Zeitlupe ·': 'slow motion ·', 'Wiederholung ·': 'replay ·', 'Musik ·': 'music ·',
   'Einstellungen & Dōjō ·': 'settings & dōjō ·', 'nächste Übung (Training)': 'next drill (training)', 'Pause (Maus frei für die Leiste oben)': 'pause (frees the mouse for the bar at the top)',
 
+  'im Ausholen:': 'during the wind-up:', 'Finte': 'Feint', '· Maus beim Abwehren zum Hieb hin ziehen:': '· pull the mouse towards the cut as you deflect:', 'Starke Abwehr': 'Strong deflect',
+  'Hiebe aus dem Lauf treffen härter, im Zurückweichen schwächer': 'Cuts out of a run hit harder, cuts while backing away softer',
+  'Finte!': 'Feint!', 'Starke Abwehr!': 'Strong deflect!',
+
   // ---- settings, dōjō, achievements
   'Einstellungen': 'Settings', 'Mausempfindlichkeit': 'Mouse sensitivity', 'Lautstärke': 'Volume', 'Blut und Blutlachen': 'Blood and pools of blood',
   'Duell-Eröffnung (ziehen, wenn der Gegner zuckt)': 'Duel opening (draw when the opponent twitches)', 'Wiederholung des Todesstoßes': 'Replay of the finishing blow',

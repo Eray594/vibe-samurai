@@ -250,3 +250,39 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   g.throwHeld(P, 1); step(30);
   g.composer.render = realRender;
 }
+
+// ---- feint, strong deflect, momentum
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel();
+  let e = dummy('samurai', V(0, 0, 2.2)); fresh(0, 4); ctl.lock = e;
+  e.brain.target = P;
+  g.input.lmbPressed = true; step(2);
+  const winding = ctl.runner.phase === 'wind';
+  e.brain.blockT = 0.8;                                       // he has seen the cut coming and raised his guard
+  const post0 = e.posture;
+  g.input.rmb = true; g.input.rmbPressed = true; step(1);
+  check('Finte: RMB im Ausholen nimmt den Hieb zurück und lässt die Deckung des Gegners fallen', winding && !ctl.runner.busy && e.brain.blockT === 0 && e.brain.fooledT > 0.5 && e.posture > post0, [winding, ctl.runner.phase, e.brain.blockT, e.brain.fooledT]);
+  e.brain.blockT = 0.8;
+  check('Finte: gleich noch einmal wirkt sie nicht', g.onFeint(P) === 0 && e.brain.blockT === 0.8);
+  g.input.rmb = false; step(5);
+  const far = dummy('samurai', V(0, 0, -8)); far.brain.target = P; far.brain.blockT = 0.8; P.feintUntil = 0;
+  check('Finte: wer weit weg steht oder nicht reagiert hat, fällt nicht darauf herein', g.onFeint(P) === 0 && far.brain.blockT === 0.8);
+
+  const deflectWith = (flick) => {
+    e = dummy('ronin', V(0, 0, 2.6)); if (e.weapon.def.key !== 'katana') e.setWeapon('katana');      // the same blade each time
+    fresh(0, 4);
+    P.guardT = 0.05; P.deflectWindow = 0.3; ctl.blockSide = 1; ctl.flickX = flick; e.weapon.blockedUntil = 0;
+    g.guardHit(P, e, e.weapon, P.getHeadPos(), 8);
+    return e.posture;
+  };
+  const plain = deflectWith(0), strong = deflectWith(60), wrong = deflectWith(-60);
+  check('Starke Abwehr: Maus zum Hieb hin bricht deutlich mehr Haltung', strong > plain * 1.5 && Math.abs(wrong - plain) < 0.01 && plain > 0, [plain, strong, wrong]);
+
+  const mom = (vz) => { fresh(0, 4); P.core.velocity.set(0, 0, vz); g.onSwing(P); return P.momentum; };
+  const stand = mom(0), run = mom(-7), back = mom(3);
+  check('Schwung: aus dem Lauf härter, im Zurückweichen schwächer, im Stand unverändert', stand === 1 && run > 1.25 && run <= 1.3 && back < 0.85 && back >= 0.8, [stand, run, back]);
+  e = dummy('ronin', V(0, 0, 2.6)); g.onSwing(e);
+  check('Schwung: Gegner bekommen keinen Bonus', e.momentum === undefined);
+  g.composer.render = realRender;
+}

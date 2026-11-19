@@ -47,6 +47,7 @@ export class Brain {
     this.post = null;           // hired soldiers: the spot to hold ...
     this.leash = 6;             // ... how far from it they will go for someone ...
     this.follow = false;        // ... or whether they stay at the player's side instead
+    this.fooledT = 0;           // answered a feint: wide open for the cut that follows
     this.raider = false;        // defense: goes for the shrine rather than for people
   }
 
@@ -126,6 +127,7 @@ export class Brain {
     const game = this.game;
     if (k.state !== 'active') { this.runner.cancel(); it.move.set(0, 0, 0); k.attackPhase = null; k.atk = null; k.aimT = 0; this.tele = null; return; }
     this.fearT = Math.max(0, this.fearT - dt);
+    this.fooledT = Math.max(0, this.fooledT - dt);
     k.atk = this.runner.a;
     if (this.runner.phase !== 'wind' && k.aimT <= 0) this.tele = null;
     // ---------- held by the collar or locked blade on blade: nothing to decide
@@ -267,7 +269,7 @@ export class Brain {
     else if (!this.threatSeen && !this.striking && this.recoilT <= 0) {       // a blade just knocked wide cannot answer
       this.threatSeen = true;       // one decision per incoming attack
       const sober = (0.4 + 0.6 * vit) * (1 - inj.dizzy);
-      if (k.dashCd <= 0 && Math.random() < 0.14 * sober) {
+      if (this.fooledT > 0) { /* fell for a feint a moment ago: no answer to the real cut */ } else if (k.dashCd <= 0 && Math.random() < 0.14 * sober) {
         const sd = Math.random() < 0.5 ? 1 : -1;
         k.dash(_v.set(-fx + rx * sd * 0.8, 0, -fz + rz * sd * 0.8).normalize());
       } else if (Math.random() < this.blockSkill * sober) {

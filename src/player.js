@@ -581,7 +581,10 @@ export class PlayerController {
       this.faceYaw = this.yaw;
     } else {
       // guard cancels everything but a blow already on its way
-      if (wantGuard && this.runner.busy && this.runner.phase !== 'strike') { this.runner.cancel(); this.buffer = 0; }
+      if (wantGuard && this.runner.busy && this.runner.phase !== 'strike') {
+        if (this.runner.phase === 'wind' && frame.rmbPressed) game.onFeint(k);      // a cut shown and taken back
+        this.runner.cancel(); this.buffer = 0;
+      }
       // ----- iai: hold B to sheathe and coil, let go to draw
       const iaiKey = inp.down('KeyB') && def.type === 'sword' && this.iaiCd <= 0 && !wantGuard && !k.airborne;
       if (iaiKey && !this.runner.busy) {

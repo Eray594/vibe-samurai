@@ -573,7 +573,7 @@ class Game {
     w.blockedUntil = this.time + 0.4;
     const deflect = D.isPlayer || D.human ? D.guardT < (D.deflectWindow ?? DEFLECT_WINDOW) : D.aiDeflect;
     const crush = !!A.atk?.unblockable && !deflect;        // a blow with everything behind it goes through a plain block
-    const impact = clamp(s / 11, 0.3, 1.3) * w.def.postureDmg * (A.swingHeavy ? 1.5 : 1) * (A.postureMul || 1)
+    const impact = clamp(s / 11, 0.3, 1.3) * w.def.postureDmg * (A.swingHeavy ? 1.5 : 1) * (A.postureMul || 1) * (A.momentum || 1)
       * (A.isPlayer ? this.perk.postureDmg : 1) * (crush ? 2.6 : 1);
     const ap = A.getPos(_a), dp = D.getPos(_b);
     const away = _c.set(ap.x - dp.x, 0, ap.z - dp.z).normalize().clone();
@@ -583,8 +583,11 @@ class Game {
     if (deflect) {
       D.aiDeflect = false;
       D.posture = Math.min(D.postureMax * 0.95, D.posture + POSTURE.deflector * impact);
-      const broke = A.addPosture(POSTURE.deflected * (0.6 + 0.4 * impact));
-      A.stagger(_a.copy(away).multiplyScalar(0.7), A.getPos(_b).setY(1.4), 0.2, 0.6);
+      // the blade swept towards the cut as it lands (a pull of the mouse to that side): it is beaten away, not just stopped
+      const strong = D.isPlayer && Math.abs(this.ctl.flickX) > 24 && Math.sign(this.ctl.flickX) === (this.ctl.blockSide || 1);
+      const broke = A.addPosture(POSTURE.deflected * (0.6 + 0.4 * impact) * (strong ? 1.75 : 1));
+      A.stagger(_a.copy(away).multiplyScalar(strong ? 1.5 : 0.7), A.getPos(_b).setY(1.4), strong ? 0.35 : 0.2, strong ? 0.85 : 0.6);
+      if (strong) { this.callout('STARKE ABWEHR!', point, 'parry'); this.ctl.flickX = 0; this.shake = Math.max(this.shake, 0.55); }
       if (A.brain) A.brain.onParried();
       else { this.ctl.runner.cancel(); this.ctl.buffer = 0; }
       this.effects.sparksAt(point, 36, 1.6);
@@ -592,7 +595,7 @@ class Game {
       this.audio.deflect();
       this.addHitStop(mine ? 0.085 : 0.03);
       if (mine) { this.shake = Math.max(this.shake, 0.4); this.fx.chroma = Math.max(this.fx.chroma, 0.5); }
-      if (D.isPlayer) { this.callout('ABGEWEHRT!', point, 'parry'); this.ctl.counterT = 0.7; this.tutorial.event('deflect'); this.tutorial.event('block'); }
+      if (D.isPlayer) { if (!strong) this.callout('ABGEWEHRT!', point, 'parry'); else this.ach.said('ABGEWEHRT!'); this.ctl.counterT = strong ? 0.9 : 0.7; this.tutorial.event('deflect'); this.tutorial.event('block'); }
       else if (A.isPlayer) this.callout('ABGEWEHRT', point, 'small');
       if (D.human && D.ctl) D.ctl.counterT = 0.7;
       if (D.isPlayer) this.training.ok(A.atk?.unblockable ? 'heavy' : 'cut');
@@ -702,6 +705,7 @@ class Game {
     if (k.isPlayer && (attacker || w.thrower)?.team === 1) raw *= this.diff.dmg;
     if (this.mode === 'tutorial') raw *= k.isPlayer ? 0.1 : 0.25;                                             // a lesson, not a fight
     if (byPlayer) raw *= this.perk.dmg;
+    if (attacker && w.attached) raw *= attacker.momentum || 1;                  // a cut out of a run carries the run with it
     if (this.mode === 'training') raw *= k.isPlayer ? 0.12 : this.training.drill === 'free' ? 1 : 0.3;      // practice: nobody is cut down by accident
     if (attacker && w.attached && attacker.liveT <= 0) raw *= 0.25;   // the blade only bites in a committed cut
     if (attacker?.swingHeavy) raw *= 1.25;
@@ -1420,6 +1424,11 @@ class Game {
   // ------------------------------------------------------------------ fighter events
   onSwing(k, heavy = false) {
     k.swingHeavy = !!heavy;
+    // what the body is doing goes into the blade: forwards adds, giving ground takes away
+    if (k.isPlayer || k.human) {
+      const v = k.core.velocity, f = k.forward(_a), fwd = k.state === 'active' ? v.x * f.x + v.z * f.z : 0;
+      k.momentum = fwd >= 0 ? 1 + Math.min(0.3, fwd * 0.05) : Math.max(0.8, 1 + fwd * 0.08);
+    }
     if (k.isPlayer) this.tutorial.event('cut');
     if (k.isPlayer) { if (heavy) { this.audio.whooshBurst(0.7); this.fx.fovKick = Math.max(this.fx.fovKick, 0.6); } }
     else if (k.getPos(_a).distanceTo(this.player.getPos(_b)) < 7) this.audio.whooshBurst(0.22);
@@ -1512,6 +1521,29 @@ class Game {
       this.audio.hit(0.5, true);
       if (k.isPlayer) { this.addHitStop(0.05); this.shake = Math.max(this.shake, 0.35); }
     } else if (k.isPlayer) this.audio.whooshBurst(0.4);
+  }
+
+  /**
+   * A cut shown and taken back. Whoever had already answered it (guard up) is left with nothing to
+   * answer: the guard drops, and for a moment he has no reply to the cut that really comes.
+   */
+  onFeint(k) {
+    if (this.time < (k.feintUntil || 0)) return 0;
+    const me = k.getPos(_a);
+    let n = 0;
+    for (const e of this.npcs) {
+      const b = e.brain;
+      if (e.team === k.team || e.state !== 'active' || e.dead || !b || b.target !== k || b.blockT <= 0) continue;
+      if (e.getPos(_b).distanceTo(me) > 4.2) continue;
+      b.blockT = 0; b.fooledT = 0.9; b.cooldown = Math.max(b.cooldown, 0.6);
+      e.addPosture(0.08 * e.postureMax);
+      n++;
+    }
+    if (!n) return 0;
+    k.feintUntil = this.time + 1.2;              // it does not work twice in a breath
+    if (k.isPlayer || k.human) this.callout('FINTE!', null, 'parry');
+    this.audio.tick?.();
+    return n;
   }
 
   onJump(k) {

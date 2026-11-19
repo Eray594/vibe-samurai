@@ -141,6 +141,8 @@ Die vollständige Tastenbelegung:
 | U | Wetter / Tageszeit: Abenddämmerung → Nacht → Regen → Schnee |
 | P | Wiederholung des Todesstoßes an/aus |
 | Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
+| RMB im Ausholen | **Finte**: nimmt den Hieb zurück; wer schon die Deckung hob, steht kurz offen |
+| Maus zum Hieb hin ziehen beim Abwehren | **Starke Abwehr**: bricht deutlich mehr Haltung |
 | Backspace · Esc | Hof zurücksetzen · Pause (gibt die Maus für die Leiste oben frei) |
 
 ## Training
