@@ -89,7 +89,7 @@ export const EN = {
   'Die Deckung hat eine Seite: Maus ziehen trägt die Klinge hinüber · drei Abwehren in Folge:': 'The guard has a side: pulling the mouse carries the blade across · three deflects in a row:',
   'Parier-Kette': 'Parry chain', 'Parier-Kette!': 'Parry chain!', 'Kette ×#': 'Chain ×#', 'Kette #': 'chain #',
   'in der Deckung: schneller Stoß · seitlich gehen, während der Hieb landet:': 'in the guard: a quick thrust · step sideways as the blow lands:', 'ins Leere lenken': 'lead it past',
-  'zweimal:': 'twice:', 'Rolle': 'roll', '· seitlich mit erfasstem Ziel:': '· sideways with a target locked:', 'Umkreisen': 'circle round', '· Maus im Hieb lenkt die Klinge': '· the mouse guides the blade during a cut',
+  'zweimal:': 'twice:', '· in der Luft:': '· in the air:', 'Salto': 'somersault', 'Rolle': 'roll', '· seitlich mit erfasstem Ziel:': '· sideways with a target locked:', 'Umkreisen': 'circle round', '· Maus im Hieb lenkt die Klinge': '· the mouse guides the blade during a cut',
   'Ins Leere gelenkt!': 'Led past!', 'Falsche Seite': 'Wrong side', 'Abgefangen': 'Caught it', 'Deckung links': 'Guard left', 'Deckung rechts': 'Guard right',
   'Deckung mit Seite (Maus trägt die Klinge nach links oder rechts)': 'Guard with a side (the mouse carries the blade left or right)',
 

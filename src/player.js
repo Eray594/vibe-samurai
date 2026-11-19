@@ -437,6 +437,8 @@ export class PlayerController {
     this.exhaustT = Math.max(0, this.exhaustT - dt);
     this.stamIdle += dt;
     if (this.stamIdle > 0.7) this.stamina = Math.min(1, this.stamina + dt * (inp.rmb ? 0.16 : 0.34));
+    k.tired = this.exhausted ? 1 : clamp((0.75 - this.stamina) / 0.6, 0, 1);      // it shows in the breathing
+    k.gaze = this.valid(this.lock) ? this.lock : null;
 
     // ---------- lock-on
     if (pressed.has('Tab') || frame.mmbPressed) {
@@ -510,6 +512,8 @@ export class PlayerController {
     }
     if ((pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();
+      // in the air it is a somersault
+      if (k.airborne && !this.exhausted && k.flip(d)) { this.spend(0.08); game.audio.whooshBurst?.(0.5); game.onFlip?.(k); }
       // a tap is a step; a second tap right after it turns it into a roll; sideways with a target locked circles round him
       const again = game.time - this.lastDodgeAt < 0.36 && k.dodgeKind !== 'roll' && k.dashT > -0.2;
       if (again) k.dashCd = 0;

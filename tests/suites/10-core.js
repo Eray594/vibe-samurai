@@ -345,7 +345,9 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   check('… gerade zurückweichen nicht', P.posture > 0 && e.brain.recoilT === 0, [P.posture, e.brain.recoilT]);
 
   e = foe(); g.input.rmb = true; g.input.rmbPressed = true; step(6);
+  // (the click may fall into the hit-stop left by the blows above: it is kept and played right after)
   g.input.lmbPressed = true; step(1);
+  for (let f = 0; f < 12 && !ctl.runner.busy; f++) step(1);
   const a = ctl.runner.a; step(3);
   check('LMB in der Deckung: schneller Stoß, den die Deckung nicht abbricht', a?.name === 'tsuki' && a.fromGuard && ctl.runner.busy, [a?.name, a?.fromGuard, ctl.runner.phase]);
   step(60);
@@ -419,5 +421,77 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   step(2); const sagging = P.armSag > 0; step(60);
   check('Treffer zeigen sich am Körper und klingen wieder ab', fl[0] > 0.3 && Math.abs(fl[1]) > 0.1 && fl[2] > 0.4 && sagging && P.flinchT === 0 && P.armSag === 0 && sane() === '', fl);
   ctl.lock = null;
+  g.composer.render = realRender;
+}
+
+// ---- a figure that is alive: breath, eyes, weight, the catch of a landing, feet that step round, a somersault
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel(); solo(null); fresh(0, 8);
+  const L = P.life;
+  // breathing: the chest opens and closes; out of breath it goes faster and deeper
+  let lo = 9, hi = 0; const b0 = L.breath;
+  for (let f = 0; f < 300; f++) { step(1); const z = P.parts.torso.scale.z; lo = Math.min(lo, z); hi = Math.max(hi, z); }
+  const calmRate = (L.breath - b0) / 300;
+  ctl.stamina = 0.02; let eff = 0; const b1 = L.breath;
+  for (let f = 0; f < 90; f++) { ctl.stamina = 0.02; step(1); eff = Math.max(eff, L.effort); }
+  const hardRate = (L.breath - b1) / 90;
+  check('Die Figur atmet, außer Atem schneller', hi - lo > 0.008 && lo >= 1 && hi < 1.08 && eff > 0.4 && hardRate > calmRate * 1.5, [lo, hi, eff, calmRate, hardRate]);
+  ctl.stamina = 1; step(30);
+
+  // the head: on the opponent standing to the side, straight again when he is gone
+  fresh(0, 8); const e = dummy('ronin', V(3, 0, 7));
+  step(80);
+  const hp = P.parts.head, look = V(0, 0, -1).applyQuaternion(hp.quaternion), body = P.forward().clone();
+  const to = e.parts.head.position.clone().sub(hp.position).setY(0).normalize();
+  const seen = [L.headYaw, look.setY(0).normalize().dot(to), body.dot(to)];
+  solo(null); step(120);
+  check('Der Kopf folgt dem Gegner und kehrt zurück', Math.abs(seen[0]) > 0.4 && seen[1] > seen[2] + 0.25 && Math.abs(L.headYaw) < 0.05, seen.concat(L.headYaw));
+
+  // walking: the body rises and sinks with the steps, the hips work
+  fresh(0, 8); K.add('KeyW'); step(40);
+  let bLo = 9, bHi = -9, yLo = 9, yHi = -9;
+  for (let f = 0; f < 90; f++) {
+    step(1);
+    const d = P.parts.pelvis.position.y - P.core.position.y; bLo = Math.min(bLo, d); bHi = Math.max(bHi, d);
+    const fw = V(1, 0, 0).applyQuaternion(P.parts.pelvis.quaternion), yw = Math.atan2(-fw.z, fw.x) - P.yawActual - P.hipYaw; yLo = Math.min(yLo, yw); yHi = Math.max(yHi, yw);
+  }
+  K.clear();
+  check('Beim Gehen hebt und senkt sich der Körper, die Hüfte arbeitet mit', bHi - bLo > 0.015 && bHi - bLo < 0.12 && yHi - yLo > 0.06 && yHi - yLo < 0.5, [bLo, bHi, yLo, yHi]);
+
+  // a landing is caught in the knees and comes up again
+  step(60); fresh(0, 8); press('Space'); let dip = 0, air = false;
+  for (let f = 0; f < 110; f++) { step(1); air = air || P.airborne; dip = Math.max(dip, L.land); }
+  step(60);
+  check('Die Landung federt in den Knien ab', air && !P.airborne && dip > 0.04 && dip < 0.3 && Math.abs(L.land) < 0.01, [dip, L.land]);
+
+  // turning on the spot: the feet are lifted and set down again, never both at once
+  fresh(0, 8); step(30);
+  const sole = () => P.parts.shinR.localToWorld(V(0, -0.25, 0));
+  const s0 = sole(); step(30); const rest = sole().distanceTo(s0);
+  let steps = 0, both = false, was = false;
+  for (let f = 0; f < 120; f++) {
+    ctl.yaw = ctl.faceYaw = Math.min(2.2, f * 0.04); step(1);
+    const up = P.feet.R.t < 1 || P.feet.L.t < 1; if (up && !was) steps++; was = up;
+    if (P.feet.R.t < 1 && P.feet.L.t < 1) both = true;
+  }
+  step(40);
+  const home = V(0, 0, 0).copy(P.core.position).setY(0), far = Math.hypot(P.feet.R.x - home.x, P.feet.R.z - home.z);
+  check('Beim Drehen auf der Stelle setzen die Füße um', rest < 0.01 && steps >= 2 && !both && far < 0.45 && P.feet.R.t === 1 && P.feet.L.t === 1, [rest, steps, both, far]);
+
+  // the somersault: only in the air, once per jump, and over by the landing
+  fresh(0, 8); const ground = P.flip(P.forward());
+  press('Space'); step(10); const h0 = P.core.position.y; press('ShiftLeft'); step(2);
+  const turning = P.rollT > 0 && P.flipped && P.airborne;
+  step(40); const again = P.flip(P.forward());
+  step(120);
+  check('Salto in der Luft: einmal pro Sprung, am Boden nicht', !ground && turning && !again && !P.airborne && P.rollT === 0 && !P.flipped && P.state === 'active' && sane() === '', [ground, turning, again, h0]);
+  K.add('KeyW'); press('Space'); step(10); press('ShiftLeft'); step(120); K.clear();
+  check('Salto im Lauf: landet auf den Füßen', P.state === 'active' && !P.airborne && P.rollT === 0, [P.state, P.airborne]);
+
+  // knocked down, the chest is its own size again; back up, everything still holds
+  P.goRagdoll(null, null, false); const flat = P.parts.torso.scale.x;
+  step(30); fresh(0, 8); step(30);
+  check('Am Boden und nach dem Aufstehen bleibt die Figur heil', flat === 1 && P.state === 'active' && sane() === '' && Object.values(P.parts).every((o) => [o.position.x, o.position.y, o.position.z, o.quaternion.w].every(Number.isFinite)), flat);
   g.composer.render = realRender;
 }

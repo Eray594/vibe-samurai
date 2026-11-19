@@ -148,6 +148,7 @@ Die vollständige Tastenbelegung:
 | LMB in der Deckung | schneller Stoß, danach steht die Deckung wieder |
 | seitlich gehen, während der Hieb landet | den Hieb **ins Leere lenken**: der Gegner stolpert vorbei |
 | Shift zweimal · seitlich mit erfasstem Ziel | **Rolle** · den Gegner **umkreisen** |
+| Shift in der Luft | **Salto** (einmal pro Sprung): etwas mehr Höhe und Weite, kurz kaum zu treffen |
 | Maus während des Hiebs | lenkt die Bahn der Klinge ein Stück weit |
 | Backspace · Esc | Hof zurücksetzen · Pause (gibt die Maus für die Leiste oben frei) |
 

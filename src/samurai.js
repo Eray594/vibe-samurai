@@ -118,6 +118,8 @@ const T_INV = new THREE.Matrix4();
 let fighterIdCounter = 1;
 
 const UP_AXIS = new THREE.Vector3(0, 1, 0);
+/** Slow, smooth, never-repeating wander in -1..1 (three sines that do not line up). */
+const drift = (t, seed) => Math.sin(t * 1.3 + seed) * 0.5 + Math.sin(t * 2.17 + seed * 1.7) * 0.3 + Math.sin(t * 0.53 + seed * 0.3) * 0.2;
 const STANCE_PART = 0.6;         // share of a stride the foot spends on the ground
 
 export class Samurai {
@@ -225,6 +227,16 @@ export class Samurai {
     this.flinchT = 0; this.flinchP = 0; this.flinchR = 0; this.armSag = 0;   // a hit shows where it landed
     this.lean = 0;
     this.gaitPhase = Math.random() * 6;
+    // what makes a standing figure look alive: breath, where the eyes go, how the weight sits, how a landing is caught
+    this.life = {
+      seed: Math.random() * 100, breath: Math.random() * 6, effort: 0, gs: 0,
+      headYaw: 0, headPitch: 0, gazeT: 0, gaze: null, glance: 0, glanceTo: 0, glanceT: rand(1, 4),
+      land: 0, landV: 0, turn: 0,
+    };
+    this.tired = 0;              // 0 fresh .. 1 out of breath (the controller says so)
+    this.gaze = null;            // whom the controller wants looked at (else: the nearest opponent)
+    this.flipped = false;        // one somersault per jump
+    this.feet = { R: { x: 0, z: 0, sx: 0, sz: 0, t: 1, set: false }, L: { x: 0, z: 0, sx: 0, sz: 0, t: 1, set: false } };
     this.weaponTarget = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), angVel: new THREE.Vector3() };
     this.prevTargetPos = null;
     this.prevTargetQuat = new THREE.Quaternion();
@@ -348,7 +360,20 @@ export class Samurai {
     _z.crossVectors(_x, _y);
     _m4.makeBasis(_x, _y, _z);
     const wt = this.weaponTarget;
-    wt.quat.setFromRotationMatrix(_m4).premultiply(this.yawQuat());
+    wt.quat.setFromRotationMatrix(_m4);
+    // hands are never still: they ride the steps, the breath, and shake a little when the strength goes
+    const lf = this.life;
+    if (lf && !this.attackPhase && (it.mode === 'guard' || it.mode === 'parry') && this.brokenT <= 0) {
+      const k2 = it.mode === 'guard' ? 1 : 0.4, g = lf.gs * k2, ph = this.gaitPhase, t = this.game.time ?? 0;
+      const br = Math.sin(lf.breath - 0.5) * (1 + 2 * lf.effort), jit = (0.25 + lf.effort) * k2;
+      hand.x += Math.sin(ph) * 0.03 * g + drift(t * 1.9, lf.seed) * 0.006 * jit;
+      hand.y += -Math.cos(2 * ph) * 0.024 * g + br * 0.007 + drift(t * 2.3, lf.seed + 9) * 0.006 * jit - lf.land * 0.5;
+      hand.z += Math.cos(ph) * 0.03 * g;
+      wt.quat.premultiply(T.q3.setFromEuler(T.eul.set(
+        -Math.cos(2 * ph) * 0.035 * g + br * 0.012 + drift(t * 1.3, lf.seed + 4) * 0.014 * jit, 0,
+        Math.sin(ph) * 0.06 * g + drift(t * 1.1, lf.seed + 2) * 0.016 * jit, 'YXZ')));
+    }
+    wt.quat.premultiply(this.yawQuat());
     this.localToWorld(hand, wt.pos);
 
     if (dt > 0 && this.prevTargetPos) {
@@ -466,6 +491,8 @@ export class Samurai {
     if (this.airborne && b.velocity.y <= 0.05 && (y <= STAND_H + 0.02 || (y <= STAND_H + 0.14 && b.velocity.y > -0.4))) {
       this.airborne = false;
       this.wallJumps = 0;
+      this.flipped = false;
+      this.life.landV += clamp(-b.velocity.y, 0, 11) * 0.42;       // the knees take it
       this.game.onFighterLand?.(this, -b.velocity.y);
     } else if (!this.airborne && y > STAND_H + 0.4) this.airborne = true;     // walked off an edge
     if (this.climb) {
@@ -578,6 +605,8 @@ export class Samurai {
   goRagdoll(dv, hitPart, dead) {
     if (this.state === 'ragdoll') { if (dead) this.dead = true; return; }
     this.updateActivePose(0);
+    this.parts.torso.scale.setScalar(1);
+    this.feet.R.set = this.feet.L.set = false;
     const world = this.game.world;
     const core = this.core;
     const bodies = {};
@@ -708,6 +737,8 @@ export class Samurai {
     this.createCore(pos, yaw);
     this.intent.yaw = yaw;
     this.state = 'active';
+    this.flipped = false; this.feet.R.set = this.feet.L.set = false;
+    this.life.land = this.life.landV = this.life.turn = 0;
     this.dead = false;
     this.inj.reset();
     this.clearWounds();
@@ -1124,20 +1155,54 @@ export class Samurai {
     const P = this.parts;
     const cp = interpPos(this.core, T.pos);
     const cq = interpQuat(this.core, T.q);
+    const lf = this.life, rawY = cp.y, gy = this.groundY, time = this.game.time ?? 0;
+    const yq0 = this.yawQuat();
+    T.fwd.set(0, 0, -1).applyQuaternion(yq0);
+    T.right.set(1, 0, 0).applyQuaternion(yq0);
+    // ---- the stride (the legs further down and everything that rides on them)
+    const vx = this.core.velocity.x, vz = this.core.velocity.z;
+    const speed = Math.hypot(vx, vz);
+    const run = clamp((speed - 4) / 4, 0, 1);
+    // a stride that fits the speed: the foot on the ground travels back exactly as fast as the body moves
+    // forward (so it stays put instead of skating), then swings forward and comes down again
+    const strideLen = clamp(0.2 + 0.055 * speed, 0.2, 0.56);
+    const cadence = clamp(speed * STANCE_PART / (2 * strideLen), 0, 3.4);
+    this.gaitPhase += dt * Math.PI * 2 * cadence * (speed > 0.15 ? 1 : 0);
+    const s = clamp(speed / 3, 0, 1), ph = this.gaitPhase;
+    const special = this.mountH > 0 || this.rollT > 0 || !!this.hang || this.slideT > 0 || this.airborne || rawY - gy > STAND_H + 0.08;
+    const gs = lf.gs = special || this.dashT > 0 ? 0 : s;           // how much of the walk shows in the body
+    const still = special ? 0 : 1 - s;
+    if (dt > 0) this.liveStep(dt, cp);
+    const br = Math.sin(lf.breath), deep = 1 + 2.5 * lf.effort;
+    // the body rises over the standing leg and sinks as the next foot comes down; it shifts over the
+    // standing foot; a landing is caught in the knees; standing, the weight wanders from leg to leg
+    const sideShift = Math.sin(ph) * 0.022 * gs * (1 - 0.6 * run) + drift(time * 0.45, lf.seed) * 0.014 * still;
+    cp.y += -Math.cos(2 * ph) * (0.014 + 0.03 * run) * gs - lf.land - (0.004 + 0.004 * br) * still;
+    cp.addScaledVector(T.right, sideShift);
+    // hips: the side of the leading foot goes forward, the side of the swinging leg drops; the chest turns against it
+    const pelYaw = Math.cos(ph) * (0.07 + 0.05 * run) * gs, pelRoll = Math.sin(ph) * 0.045 * gs + drift(time * 0.45, lf.seed) * 0.02 * still;
+    const chestYaw = this.twist + lf.turn - pelYaw * 0.85;
     P.pelvis.position.copy(cp);
-    P.pelvis.quaternion.copy(cq);
+    P.pelvis.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(0, this.hipYaw + pelYaw, pelRoll, 'YXZ')));
     // torso
     P.torso.position.set(0, WAIST_Y, 0).applyQuaternion(cq).add(cp);
     // off balance shows: the upper body sways and pitches until the feet are under it again
     const wob = clamp(1 - this.balance / 0.7, 0, 1) * (this.staggerT > 0 ? 1 : 0.45);
-    const wt = this.game.time * 7 + this.id * 1.7;
+    const wt = time * 7 + this.id * 1.7;
     const sway = Math.sin(wt) * 0.24 * wob, pitch = (0.16 + Math.sin(wt * 0.63) * 0.1) * wob + (this.skidT > 0 ? -0.3 * (this.skidT / 0.26) : 0);
     const fl = this.flinchT > 0 ? (this.flinchT / 0.34) ** 2 : 0;
-    P.pelvis.quaternion.multiply(T.q2.setFromAxisAngle(UP_AXIS, this.hipYaw));
-    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(-this.lean - this.runLean - pitch - this.accLean.y + this.flinchP * fl, this.twist, sway + this.accLean.x + this.flinchR * fl, 'YXZ')));
+    const chestPitch = -this.lean - this.runLean - pitch - this.accLean.y + this.flinchP * fl - br * 0.009 * deep - lf.land * 1.3 - 0.03 * lf.effort;
+    const chestRoll = sway + this.accLean.x + this.flinchR * fl - pelRoll * 0.6 + drift(time * 0.38, lf.seed + 5) * 0.012 * still;
+    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(chestPitch, chestYaw, chestRoll, 'YXZ')));
+    const chest = (br * 0.5 + 0.5) * (0.014 + 0.03 * lf.effort);         // the ribs open with every breath
+    P.torso.scale.set(1 + chest * 0.6, 1, 1 + chest);
     const tq = P.torso.quaternion;
+    // the head: stays on whoever it is watching while the body under it turns and works, and nods with the steps
     P.head.position.set(0, 0.5, 0).applyQuaternion(tq).add(P.torso.position);
-    P.head.quaternion.copy(tq).multiply(T.q2.setFromEuler(T.eul.set((this.lean + this.runLean) * 0.6 + this.flinchP * fl * 0.8, -this.twist * 0.6, -this.accLean.x * 0.5 + this.flinchR * fl * 0.6, 'YXZ')));
+    P.head.quaternion.copy(tq).multiply(T.q2.setFromEuler(T.eul.set(
+      (this.lean + this.runLean) * 0.6 + this.flinchP * fl * 0.8 + lf.headPitch + br * 0.007 * deep + lf.land * 0.7 + Math.cos(2 * ph) * 0.014 * gs,
+      lf.headYaw + lf.glance - chestYaw * 0.9,
+      -this.accLean.x * 0.5 + this.flinchR * fl * 0.6 + pelRoll * 0.35 + drift(time * 0.6, lf.seed + 7) * 0.012 * still, 'YXZ')));
 
     // frame vectors
     const yq = this.yawQuat();
@@ -1146,8 +1211,11 @@ export class Samurai {
     T.back.copy(T.fwd).negate();
 
     // ---- arms
-    const shR = T.a.set(SHOULDER.x, SHOULDER.y, 0).applyQuaternion(tq).add(P.torso.position).clone();
-    const shL = T.a.set(-SHOULDER.x, SHOULDER.y, 0).applyQuaternion(tq).add(P.torso.position).clone();
+    const shrug = (br * 0.5 + 0.5) * 0.006 * deep;          // the shoulders go up with the breath
+    const shR = T.a.set(SHOULDER.x, SHOULDER.y + shrug, 0).applyQuaternion(tq).add(P.torso.position).clone();
+    const shL = T.a.set(-SHOULDER.x, SHOULDER.y + shrug, 0).applyQuaternion(tq).add(P.torso.position).clone();
+    // an empty hand swings against the legs, hangs heavier at rest, and comes up for balance in the air
+    const swing = Math.cos(ph) * (0.1 + 0.16 * run) * gs, up = this.airborne && !this.hang ? 0.16 : 0, hangY = br * 0.004 - lf.land * 0.4;
     const w = this.weapon;
     let handR, handL;
     if (w && w.attached) {
@@ -1157,11 +1225,11 @@ export class Samurai {
         if (w.def.twoHanded && !this.severed.has('fArmL') && this.inj.parts.armL < 1) handL = w.worldPoint(w.handL);
       }
     }
-    if (!handR) handR = this.localToWorld(L(0.25, 0.12, 0.12), new THREE.Vector3());
+    if (!handR) handR = this.localToWorld(L(0.25 + up, 0.12 + up + hangY + Math.abs(swing) * 0.25, 0.12 - swing), new THREE.Vector3());
     // a free hand goes to a bad body wound
     if (this.hang && !this.severed.has('fArmL')) handL = new THREE.Vector3(this.hang.x - this.hang.nz * 0.2, this.hang.top + 0.02, this.hang.z + this.hang.nx * 0.2);   // gripping the edge
     else if (this.aimT > 0 && !this.severed.has('fArmL')) handL = this.localToWorld(L(-0.12, 0.46, 0.56), new THREE.Vector3());   // bow / gun raised
-    if (!handL) handL = this.localToWorld(this.inj.parts.torso > 0.45 ? L(-0.06, 0.2, 0.2) : L(-0.27, 0.16, 0.1), new THREE.Vector3());
+    if (!handL) handL = this.localToWorld(this.inj.parts.torso > 0.45 ? L(-0.06, 0.2 + hangY, 0.2) : L(-0.27 - up, 0.16 + up + hangY + Math.abs(swing) * 0.25, 0.1 + swing), new THREE.Vector3());
     const poleR = T.b.copy(T.right).multiplyScalar(0.7).add(T.e.set(0, -0.7, 0)).addScaledVector(T.back, 0.3);
     solveTwoBone(shR, handR, ARM.upper, ARM.fore, poleR, T.mid, T.end);
     placeLimb(P.uArmR, shR, T.mid, T.back);
@@ -1173,14 +1241,6 @@ export class Samurai {
     this.syncArmShapes(cp, cq);
 
     // ---- legs (procedural gait, planted on the floor)
-    const vx = this.core.velocity.x, vz = this.core.velocity.z;
-    const speed = Math.hypot(vx, vz);
-    const run = clamp((speed - 4) / 4, 0, 1);
-    // a stride that fits the speed: the foot on the ground travels back exactly as fast as the body moves
-    // forward (so it stays put instead of skating), then swings forward and comes down again
-    const strideLen = clamp(0.2 + 0.055 * speed, 0.2, 0.56);
-    const cadence = clamp(speed * STANCE_PART / (2 * strideLen), 0, 3.4);
-    this.gaitPhase += dt * Math.PI * 2 * cadence * (speed > 0.15 ? 1 : 0);
     if (dt > 0) {
       // leaning: into speeding up and out of braking, and into a turn
       const ax = clamp((vx - this.velPrev.x) / dt, -40, 40), az = clamp((vz - this.velPrev.y) / dt, -40, 40);
@@ -1201,13 +1261,11 @@ export class Samurai {
     // lean: into the run, back for a kick, hunched over a body wound
     const leanTo = this.slideT > 0 ? -0.5 : this.kickT > 0 ? -0.24 : (this.sprinting ? 0.32 : 0.06) * clamp(speed / 6, 0, 1) + 0.2 * Math.min(1, this.inj.parts.torso);
     if (dt > 0) this.runLean += (leanTo - this.runLean) * dampFactor(this.kickT > 0 || this.slideT > 0 ? 16 : 6, dt);
-    const gy = this.groundY;
-    const s = clamp(speed / 3, 0, 1);
     const mdx = speed > 0.05 ? vx / speed : 0, mdz = speed > 0.05 ? vz / speed : 0;
     for (const [side, name, stance] of [[1, 'R', 0.2], [-1, 'L', -0.2]]) {
       const hip = T.a.set(side * LEG.hipX, LEG.hipY, 0).applyQuaternion(P.pelvis.quaternion).add(cp).clone();
-      const ph = this.gaitPhase + (side > 0 ? 0 : Math.PI);
-      const cyc = ((ph / (Math.PI * 2)) % 1 + 1) % 1, sw = cyc < STANCE_PART ? 0 : (cyc - STANCE_PART) / (1 - STANCE_PART);
+      const lph = ph + (side > 0 ? 0 : Math.PI);
+      const cyc = ((lph / (Math.PI * 2)) % 1 + 1) % 1, sw = cyc < STANCE_PART ? 0 : (cyc - STANCE_PART) / (1 - STANCE_PART);
       const along = cyc < STANCE_PART ? 1 - 2 * cyc / STANCE_PART : -1 + 2 * smooth(sw);        // +1: just set down in front, -1: about to lift off behind
       const foot = T.e.set(cp.x, gy, cp.z)
         .addScaledVector(T.right, side * 0.15)
@@ -1217,6 +1275,26 @@ export class Samurai {
       foot.x += mdx * along * stride * s;
       foot.z += mdz * along * stride * s;
       foot.y = gy + 0.085 + Math.sin(Math.PI * sw) * (0.11 + 0.12 * run) * s * (1 - 0.7 * legDmg);
+      // standing or creeping, a foot stays where it was put; when the body has turned or drifted away from
+      // it, it is lifted and set down again, one foot at a time
+      const fp = this.feet[name], other = this.feet[side > 0 ? 'L' : 'R'];
+      const own = clamp((s - 0.1) / 0.25, 0, 1);                 // 1: the walk has the feet
+      if (special || this.dashT > 0 || this.kickT > 0) fp.set = false;
+      else {
+        if (!fp.set || own >= 1) { fp.x = foot.x; fp.z = foot.z; fp.t = 1; fp.set = true; }
+        else {
+          if (fp.t >= 1 && other.t >= 1 && Math.hypot(foot.x - fp.x, foot.z - fp.z) > 0.15) { fp.t = 0; fp.sx = fp.x; fp.sz = fp.z; }
+          let lift = 0;
+          if (fp.t < 1) {
+            fp.t = Math.min(1, fp.t + dt / 0.17);
+            const u = smooth(fp.t);
+            fp.x = fp.sx + (foot.x - fp.sx) * u; fp.z = fp.sz + (foot.z - fp.sz) * u;
+            lift = Math.sin(Math.PI * fp.t) * 0.07;
+          }
+          foot.x = fp.x + (foot.x - fp.x) * own; foot.z = fp.z + (foot.z - fp.z) * own;
+          foot.y += lift * (1 - own);
+        }
+      }
       if (this.mountH > 0) {
         // astride: knees out, feet in the stirrups
         foot.copy(hip).addScaledVector(T.right, side * 0.3).addScaledVector(T.fwd, 0.12);
@@ -1229,9 +1307,11 @@ export class Samurai {
         // one leg stretched out in front, the other folded under
         foot.copy(hip).addScaledVector(T.fwd, side > 0 ? 0.78 : 0.3).addScaledVector(T.right, side * 0.08);
         foot.y = gy + 0.09;
-      } else if (this.airborne || cp.y - gy > STAND_H + 0.08) {
-        foot.copy(hip).addScaledVector(T.fwd, side > 0 ? -0.12 : 0.18);
-        foot.y = hip.y - 0.62;
+      } else if (this.airborne || rawY - gy > STAND_H + 0.08) {
+        // going up the knees come along, coming down the legs reach for the ground
+        const vy = clamp(this.core.velocity.y / 5, -1, 1), tuck = Math.max(vy, 0), reach = Math.max(-vy, 0);
+        foot.copy(hip).addScaledVector(T.fwd, side > 0 ? -0.12 - 0.1 * tuck : 0.18 + 0.1 * tuck - 0.1 * reach);
+        foot.y = hip.y - 0.62 + (side > 0 ? 0.1 : 0.2) * tuck - 0.14 * reach;
       }
       const kicking = side > 0 && this.kickT > 0;
       if (kicking) {
@@ -1253,7 +1333,7 @@ export class Samurai {
       const u = 1 - this.rollT / this.rollDur;
       const R = this.rollQ.setFromAxisAngle(this.rollAxis, Math.PI * 2 * smooth(u));
       const c = this.core.position;
-      const piv = this.rollPiv.set(c.x, gy + 0.8, c.z);
+      const piv = this.rollPiv.set(c.x, this.airborne ? Math.max(gy + 0.8, c.y - 0.18) : gy + 0.8, c.z);
       this.rollDrop = -0.16 * Math.sin(Math.PI * u);       // lifted a little at the top of the turn so the head clears the ground
       for (const n of PART_NAMES) {
         const o = P[n];
@@ -1273,6 +1353,64 @@ export class Samurai {
         P[n].quaternion.slerpQuaternions(f.q, P[n].quaternion, k);
       }
     }
+  }
+
+  /** Breath, eyes, the catch of a landing, the upper body trailing a turn. */
+  liveStep(dt, cp) {
+    const lf = this.life;
+    const want = Math.max(this.tired, Math.min(1, this.posture / (this.postureMax || 1)) * 0.5, (1 - this.inj.vitality) * 0.7, this.sprinting ? 0.35 : 0);
+    lf.effort += (clamp(want, 0, 1) - lf.effort) * dampFactor(want > lf.effort ? 1.6 : 0.7, dt);
+    lf.breath += dt * Math.PI * 2 * (0.24 + 0.9 * lf.effort);
+    // a landing: a damped spring in the knees
+    lf.landV += (-lf.land * 95 - lf.landV * 12) * dt;
+    lf.land = clamp(lf.land + lf.landV * dt, -0.03, 0.3);
+    lf.turn += (clamp(-this.core.angularVelocity.y * 0.05, -0.22, 0.22) - lf.turn) * dampFactor(9, dt);
+    // whom to watch: the one the controller names, else the nearest opponent on his feet
+    lf.gazeT -= dt;
+    if (lf.gazeT <= 0) {
+      lf.gazeT = 0.3;
+      let best = this.gaze && !this.gaze.dead ? this.gaze : null;
+      if (!best) {
+        let bd = 11 * 11;
+        for (const f of this.game.fighters || []) {
+          if (f === this || f.dead || f.team === this.team) continue;
+          const p = f.parts.torso.position, d = (p.x - cp.x) ** 2 + (p.z - cp.z) ** 2;
+          if (d < bd) { bd = d; best = f; }
+        }
+      }
+      lf.gaze = best;
+    }
+    let yaw = 0, pitch = 0;
+    const g = lf.gaze;
+    if (g && !g.dead && g.parts) {
+      const hp = g.parts.head.position, dx = hp.x - cp.x, dy = hp.y + 0.1 - (cp.y + 0.72), dz = hp.z - cp.z;
+      const f = dx * T.fwd.x + dz * T.fwd.z, r = dx * T.right.x + dz * T.right.z, a = -Math.atan2(r, f);
+      if (Math.abs(a) < 2) { yaw = clamp(a, -1.05, 1.05); pitch = clamp(Math.atan2(dy, Math.hypot(f, r) || 1), -0.5, 0.45); }
+      lf.glanceTo = 0; lf.glanceT = rand(1.5, 4);
+    } else {
+      // nobody about: the eyes wander now and then
+      lf.glanceT -= dt;
+      if (lf.glanceT <= 0) { lf.glanceTo = lf.glanceTo ? 0 : rand(-0.55, 0.55); lf.glanceT = lf.glanceTo ? rand(0.6, 1.4) : rand(2, 5); }
+    }
+    const kh = dampFactor(9, dt);
+    lf.headYaw += (yaw - lf.headYaw) * kh;
+    lf.headPitch += (pitch - lf.headPitch) * kh;
+    lf.glance += (lf.glanceTo - lf.glance) * dampFactor(5, dt);
+  }
+
+  /** A somersault in mid-air, once per jump: a little more height and carry, and hard to hit while it turns. */
+  flip(dir) {
+    if (this.state !== 'active' || !this.airborne || this.flipped || this.rollT > 0) return false;
+    if (this.hang || this.climb || this.heldBy || this.mountH > 0 || this.bound || this.inj.legStrength < 0.45) return false;
+    const b = this.core;
+    if (b.position.y - this.groundY - STAND_H < 0.3 && b.velocity.y < 2) return false;      // too close to the ground to get round
+    this.flipped = true;
+    this.rollT = this.rollDur;
+    this.rollAxis.set(dir.z, 0, -dir.x).normalize();
+    b.velocity.y = Math.max(b.velocity.y, 2.4);
+    b.velocity.x += dir.x * 1.6; b.velocity.z += dir.z * 1.6;
+    this.iframeT = Math.max(this.iframeT, 0.24);
+    return true;
   }
 
   /** Move the core's arm collision boxes to where the IK put the arms. */
