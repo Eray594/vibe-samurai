@@ -174,6 +174,57 @@ const faceTex = (skin, o = {}) => canvasTex(`face${skin}_${o.beard || 0}_${o.ste
   g.restore();
 });
 
+// ------------------------------------------------------------------ relief (normal maps, shared by every figure)
+/** A tiling normal map from a height function h(x, y) → 0..1 over an S×S tile. */
+function reliefTex(key, S, height, strength) {
+  if (texCache.has(key)) return texCache.get(key);
+  const hgt = new Float32Array(S * S);
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) hgt[y * S + x] = height(x, y, S);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d'), img = g.createImageData(S, S), d = img.data;
+  const at = (x, y) => hgt[((y + S) % S) * S + ((x + S) % S)];
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const dx = (at(x + 1, y) - at(x - 1, y)) * strength, dy = (at(x, y + 1) - at(x, y - 1)) * strength;
+    const l = 1 / Math.hypot(dx, dy, 1), i = (y * S + x) * 4;
+    d[i] = (-dx * l * 0.5 + 0.5) * 255; d[i + 1] = (dy * l * 0.5 + 0.5) * 255; d[i + 2] = (l * 0.5 + 0.5) * 255; d[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
+  texCache.set(key, t);
+  return t;
+}
+/** Smooth tiling noise 0..1 (a few octaves of wrapped value noise). */
+function tileNoise(S, cells, seed = 1) {
+  const r = (i, j, c) => { const n = Math.sin(((i % c + c) % c) * 127.1 + ((j % c + c) % c) * 311.7 + seed * 74.7) * 43758.5453; return n - Math.floor(n); };
+  return (x, y) => {
+    let v = 0, amp = 0.5, c = cells;
+    for (let o = 0; o < 3; o++) {
+      const fx = x / S * c, fy = y / S * c, i = Math.floor(fx), j = Math.floor(fy);
+      const u = fx - i, w = fy - j, su = u * u * (3 - 2 * u), sw = w * w * (3 - 2 * w);
+      v += amp * ((r(i, j, c) * (1 - su) + r(i + 1, j, c) * su) * (1 - sw) + (r(i, j + 1, c) * (1 - su) + r(i + 1, j + 1, c) * su) * sw);
+      amp *= 0.5; c *= 2;
+    }
+    return v / 0.875;
+  };
+}
+/** Woven cloth: threads over and under, and the soft creases a worn garment has. */
+const weaveRelief = () => { const n = tileNoise(128, 4, 3); return reliefTex('n_weave', 128, (x, y) => (Math.sin(x * Math.PI / 2) * Math.sin(y * Math.PI / 2) > 0 ? 0.12 : 0) + 0.06 * Math.sin(x * Math.PI) + n(x, y) * 0.9, 2.2); };
+/** Hakama: deep pleats running down, with the weave in them. */
+const pleatRelief = () => { const n = tileNoise(128, 3, 8); return reliefTex('n_pleat', 128, (x, y) => { const u = (x % 32) / 32; return Math.min(u * 3, 1) * (1 - u) * 1.6 + n(x, y) * 0.45 + (y % 2) * 0.03; }, 2.6); };
+/** Lamellar: each row of plates stands proud of the one below, each plate slightly domed, the lacing raised. */
+const lamellarRelief = () => reliefTex('n_lam', 128, (x, y) => {
+  const ry = (y % 32) / 32, px = (x % 16) / 16;
+  const lace = ry > 0.09 && ry < 0.38 && ((px > 0.25 && px < 0.41) || (px > 0.62 && px < 0.78)) ? 0.25 : 0;
+  return (1 - ry) * 0.75 + Math.sin(px * Math.PI) * 0.22 + lace + (ry > 0.46 && ry < 0.54 ? 0.2 : 0);
+}, 2.4);
+/** Plaited straw. */
+const strawRelief = () => reliefTex('n_straw', 64, (x, y) => Math.abs(Math.sin((x + (Math.floor(y / 4) % 2) * 4) * Math.PI / 8)) * 0.6 + (y % 4) / 4 * 0.4, 2.0);
+/** Skin: pores and the fine lines of a face. */
+const skinRelief = () => { const n = tileNoise(128, 16, 5), n2 = tileNoise(128, 40, 9); return reliefTex('n_skin', 128, (x, y) => n(x, y) * 0.6 + n2(x, y) * 0.4, 1.1); };
+
 // ------------------------------------------------------------------ materials
 export function makeMaterials(style) {
   const armored = style.armor != null;
@@ -181,17 +232,17 @@ export function makeMaterials(style) {
   const skin = style.skin ?? SKIN_TONES[Math.floor(Math.random() * SKIN_TONES.length)];
   const lac = armored ? style.armor : style.cloth, lace = style.lace ?? 0xd9b25a;
   const m = {
-    armor: std({ map: armored ? lamellarTex(lac, lace) : clothTex(lac), metalness: armored ? 0.35 : 0, roughness: armored ? 0.36 : 0.9, side: THREE.DoubleSide }),
+    armor: std({ map: armored ? lamellarTex(lac, lace) : clothTex(lac), normalMap: armored ? lamellarRelief() : weaveRelief(), metalness: armored ? 0.35 : 0, roughness: armored ? 0.36 : 0.9, side: THREE.DoubleSide }),
     plate: std({ color: lac, metalness: armored ? 0.5 : 0, roughness: armored ? 0.26 : 0.9, side: THREE.DoubleSide }),
     splint: std({ map: splintTex(armored ? lac : 0x3a3a3e, style.cloth), metalness: 0.4, roughness: 0.42, side: THREE.DoubleSide }),
     lace: std({ color: lace, roughness: 0.8 }),
-    cloth: std({ map: clothTex(style.cloth, style.pattern || 'plain'), roughness: 0.93, side: THREE.DoubleSide }),
-    hakama: std({ map: clothTex(style.hakama ?? style.cloth, 'pleat'), roughness: 0.95, side: THREE.DoubleSide }),
+    cloth: std({ map: clothTex(style.cloth, style.pattern || 'plain'), normalMap: weaveRelief(), normalScale: new THREE.Vector2(0.9, 0.9), roughness: 0.93, side: THREE.DoubleSide }),
+    hakama: std({ map: clothTex(style.hakama ?? style.cloth, 'pleat'), normalMap: pleatRelief(), roughness: 0.95, side: THREE.DoubleSide }),
     trim: std({ color: style.trim ?? 0xc9a14f, metalness: 0.8, roughness: 0.32, side: THREE.DoubleSide }),
     skin: std({ color: skin, roughness: 0.72 }),
-    face: std({ map: faceTex(skin, { beard: style.beard || 0, stern: armored || style.stern, scar: style.scar }), roughness: 0.7 }),
+    face: std({ map: faceTex(skin, { beard: style.beard || 0, stern: armored || style.stern, scar: style.scar }), normalMap: skinRelief(), normalScale: new THREE.Vector2(0.35, 0.35), roughness: 0.62 }),
     hair: std({ color: style.hair ?? 0x0d0a0a, roughness: 0.55 }),
-    straw: std({ map: strawTex(), roughness: 0.95, side: THREE.DoubleSide }),
+    straw: std({ map: strawTex(), normalMap: strawRelief(), roughness: 0.95, side: THREE.DoubleSide }),
     white: std({ color: 0xe6e1d6, roughness: 0.9, side: THREE.DoubleSide }),
     dark: std({ color: 0x15120f, metalness: 0.3, roughness: 0.35 }),
     menpo: std({ color: style.menpo ?? 0x3a0c0c, metalness: 0.45, roughness: 0.3, side: THREE.DoubleSide }),
@@ -264,8 +315,45 @@ export function buildParts(style) {
     new THREE.Mesh(uvs(new THREE.CylinderGeometry(rt, rb, h, seg, 1, open, ts, tl), su, sv), mat);
   const sph = (r, mat, ws = 16, hs = 12, ps = 0, pl = Math.PI) => new THREE.Mesh(new THREE.SphereGeometry(r, ws, hs, 0, Math.PI * 2, ps, pl), mat);
   /** Surface of revolution from [radius, y] pairs (bottom → top). */
-  const lathe = (pts, mat, su = 1, sv = 1, seg = 18) =>
+  const lathe = (pts, mat, su = 1, sv = 1, seg = 24) =>
     new THREE.Mesh(uvs(new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg), su, sv), mat);
+  /**
+   * A skull instead of a ball: a sphere pushed in and out where a head is (jaw, chin, brow, eye sockets,
+   * cheekbones, lips, the back of the head). Keeps the sphere's texture layout, so the painted face still fits.
+   * Unit directions: x right, y up, -z the face.
+   */
+  const BUMPS = [
+    // x, y, z, radius of influence, amount
+    [0, 0.34, -0.94, 0.42, 0.035],        // brow ridge
+    [0.3, 0.19, -0.93, 0.2, -0.045], [-0.3, 0.19, -0.93, 0.2, -0.045],     // eye sockets
+    [0.52, -0.06, -0.85, 0.3, 0.04], [-0.52, -0.06, -0.85, 0.3, 0.04],     // cheekbones
+    [0, -0.3, -0.95, 0.2, 0.03],          // lips
+    [0, -0.47, -0.88, 0.16, -0.02],       // under the lip
+    [0, -0.78, -0.62, 0.36, 0.09],        // chin
+    [0.75, -0.55, -0.35, 0.4, -0.07], [-0.75, -0.55, -0.35, 0.4, -0.07],   // the jaw narrows
+    [0.95, 0.25, -0.2, 0.4, -0.03], [-0.95, 0.25, -0.2, 0.4, -0.03],       // temples
+    [0, 0.25, 0.97, 0.7, 0.07],           // back of the head
+    [0, -0.95, 0.2, 0.5, -0.1],           // under the jaw, into the neck
+  ];
+  const skull = (r, mat) => {
+    const W = 40, H = 30, geo = new THREE.SphereGeometry(r, W, H), pos = geo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      _v.fromBufferAttribute(pos, i);
+      const len = _v.length() || 1, x = _v.x / len, y = _v.y / len, z = _v.z / len;
+      let k = 1;
+      for (const [bx, by, bz, br, amt] of BUMPS) k += amt * Math.exp(-((x - bx) ** 2 + (y - by) ** 2 + (z - bz) ** 2) / (br * br));
+      pos.setXYZ(i, x * r * k, y * r * k, z * r * k);
+    }
+    geo.computeVertexNormals();
+    // the sphere is cut open along one meridian: give both lips of the cut the same normal, or it shows as a line
+    const nor = geo.attributes.normal;
+    for (let j = 0; j <= H; j++) {
+      const a = j * (W + 1), b = a + W;
+      _v.set(nor.getX(a) + nor.getX(b), nor.getY(a) + nor.getY(b), nor.getZ(a) + nor.getZ(b)).normalize();
+      nor.setXYZ(a, _v.x, _v.y, _v.z); nor.setXYZ(b, _v.x, _v.y, _v.z);
+    }
+    return new THREE.Mesh(geo, mat);
+  };
   /** One lamellar strip (a single laced row). */
   const lame = (w, h, d = 0.018) => box(w, h, d, m.armor, Math.max(1, Math.round(w / 0.035)), 0.25);
 
@@ -305,11 +393,11 @@ export function buildParts(style) {
   // ---------------- torso (origin at waist, extends up): kimono, dō, sode
   P.torso = new THREE.Group();
   add(P.torso, lathe([[0.172, 0], [0.18, 0.1], [0.195, 0.24], [0.2, 0.34], [0.185, 0.41], [0.12, 0.455], [0.07, 0.48]], m.cloth, 6, 3)).scale.set(1, 1, 0.7);
-  add(P.torso, cyl(0.05, 0.058, 0.1, m.skin, 12), 0, 0.5, 0);
+  add(P.torso, lathe([[0.1, 0.44], [0.072, 0.468], [0.056, 0.5], [0.052, 0.55]], m.skin, 1, 1, 16), 0, 0, 0.004);      // neck, and the slope of the shoulders into it
   for (const s of [-1, 1]) {
     add(P.torso, box(0.03, 0.27, 0.01, m.white), s * 0.038, 0.375, -0.132).rotation.set(-0.12, 0, s * 0.36);
     add(P.torso, box(0.05, 0.31, 0.014, m.cloth), s * 0.078, 0.335, -0.13).rotation.set(-0.1, 0, s * 0.36);
-    add(P.torso, sph(0.095, m.cloth, 14, 10), s * 0.2, SHOULDER.y + 0.005, 0).scale.set(1.12, 0.74, 1.05);
+    add(P.torso, sph(0.08, m.cloth, 16, 10), s * 0.196, SHOULDER.y - 0.002, 0).scale.set(1.05, 0.8, 1);
   }
   if (armored) {
     add(P.torso, lathe([[0.19, 0.0], [0.202, 0.1], [0.214, 0.22], [0.217, 0.33], [0.203, 0.385]], m.armor, 6, 1.25, 20)).scale.set(1, 1, 0.74);
@@ -343,14 +431,22 @@ export function buildParts(style) {
 
   // ---------------- head (origin at neck)
   P.head = new THREE.Group();
-  add(P.head, sph(0.105, m.face, 28, 20), 0, 0.155, 0).scale.set(0.9, 1.12, 1);
-  add(P.head, sph(0.07, m.skin, 14, 10), 0, 0.087, -0.02).scale.set(1, 0.74, 1.05);
-  add(P.head, box(0.017, 0.04, 0.022, m.skin), 0, 0.156, -0.104).rotation.x = -0.32;
-  add(P.head, sph(0.0125, m.skin, 8, 6), 0, 0.139, -0.113);
-  for (const s of [-1, 1]) add(P.head, sph(0.023, m.skin, 8, 6), s * 0.094, 0.155, 0.006).scale.set(0.4, 1, 0.7);
+  add(P.head, skull(0.105, m.face), 0, 0.155, 0).scale.set(0.9, 1.12, 1);
+  add(P.head, lathe([[0.066, -0.01], [0.054, 0.03], [0.05, 0.07], [0.056, 0.11]], m.skin, 1, 1, 16), 0, 0, 0.008);       // neck
+  // nose: bridge, tip and the two wings
+  add(P.head, sph(0.011, m.skin, 10, 8), 0, 0.158, -0.1).scale.set(0.8, 2.1, 1.25);
+  add(P.head, sph(0.0135, m.skin, 10, 8), 0, 0.14, -0.111).scale.set(1, 0.85, 1);
+  for (const s of [-1, 1]) add(P.head, sph(0.008, m.skin, 8, 6), s * 0.0115, 0.136, -0.102);
+  // ears: the rim and the lobe
+  for (const s of [-1, 1]) {
+    const ear = add(P.head, new THREE.Mesh(new THREE.TorusGeometry(0.019, 0.006, 6, 14), m.skin), s * 0.093, 0.158, 0.008);
+    ear.rotation.y = Math.PI / 2 - s * 0.35; ear.scale.set(0.72, 1.15, 1);
+    add(P.head, sph(0.012, m.skin, 8, 6), s * 0.09, 0.156, 0.006).scale.set(0.45, 1.2, 0.8);
+    add(P.head, sph(0.007, m.skin, 6, 5), s * 0.091, 0.134, 0.004);
+  }
   const hairCap = () => {
-    const h = add(P.head, sph(0.111, m.hair, 16, 10, 0, Math.PI * 0.56), 0, 0.16, 0.01);
-    h.scale.set(0.93, 1.12, 1.03);
+    const h = add(P.head, sph(0.113, m.hair, 24, 12, 0, Math.PI * 0.5), 0, 0.162, 0.014);
+    h.scale.set(0.93, 1.12, 1.06);
     h.rotation.x = 0.3;
     for (const s of [-1, 1]) add(P.head, box(0.012, 0.05, 0.03, m.hair), s * 0.093, 0.16, -0.035);
   };
@@ -428,27 +524,37 @@ export function buildParts(style) {
   const kote = style.kote ?? armored;
   const upper = () => {
     const g = new THREE.Group();
-    add(g, lathe([[0.05, -0.3], [0.07, -0.26], [0.068, -0.1], [0.06, 0]], m.cloth, 3, 2, 12));
+    add(g, lathe([[0.052, -0.3], [0.066, -0.27], [0.071, -0.19], [0.07, -0.1], [0.064, -0.03], [0.056, 0]], m.cloth, 3, 2, 18));
     return g;
   };
   const fore = () => {
     const g = new THREE.Group();
     if (kote) {
-      add(g, lathe([[0.04, -0.27], [0.05, -0.15], [0.056, -0.02]], m.splint, 3, 1, 12));
+      add(g, lathe([[0.04, -0.27], [0.046, -0.2], [0.053, -0.12], [0.056, -0.02]], m.splint, 3, 1, 18));
       add(g, sph(0.052, m.plate, 10, 8), 0, -0.012, 0.005).scale.set(1, 0.7, 1);
       add(g, cyl(0.043, 0.043, 0.02, m.lace, 10), 0, -0.262, 0);
     } else {
-      add(g, lathe([[0.062, -0.15], [0.067, -0.05], [0.062, 0]], m.cloth, 3, 1, 12));
-      add(g, cyl(0.042, 0.036, 0.16, m.skin, 10), 0, -0.2, 0);
-      add(g, cyl(0.039, 0.039, 0.05, m.white, 10), 0, -0.255, 0);
+      add(g, lathe([[0.064, -0.16], [0.07, -0.08], [0.066, -0.02], [0.056, 0.012]], m.cloth, 3, 1, 18));
+      add(g, lathe([[0.034, -0.28], [0.037, -0.22], [0.043, -0.14], [0.041, -0.1]], m.skin, 1, 1, 14));
+      add(g, cyl(0.039, 0.037, 0.05, m.white, 14), 0, -0.255, 0);
     }
-    add(g, sph(0.046, m.skin, 10, 8), 0, -0.305, 0).scale.set(0.82, 1, 0.92);
-    add(g, box(0.022, 0.05, 0.026, m.skin), 0.0, -0.3, -0.04);
+    add(g, sph(0.058, kote ? m.plate : m.cloth, 12, 8), 0, 0, 0).scale.set(1, 0.8, 1);           // elbow
+    // the hand: the back of it, four fingers closed round the grip, the thumb laid over them
+    add(g, sph(0.04, m.skin, 12, 8), 0, -0.303, 0.004).scale.set(0.95, 1, 0.62);
+    for (let i = 0; i < 4; i++) {
+      const fx = -0.027 + i * 0.018, len = i === 0 || i === 3 ? 0.9 : 1;
+      add(g, sph(0.0105, m.skin, 6, 5), fx, -0.336, -0.006);                                       // knuckle
+      add(g, cyl(0.0088, 0.0096, 0.034 * len, m.skin, 6), fx, -0.344, -0.024).rotation.x = 1.15;   // first joint, forwards and down
+      add(g, cyl(0.008, 0.0086, 0.028 * len, m.skin, 6), fx, -0.334, -0.041).rotation.x = -0.35;   // curled back up
+      add(g, sph(0.0082, m.skin, 6, 5), fx, -0.32, -0.039);                                        // fingertip
+    }
+    add(g, cyl(0.0105, 0.012, 0.04, m.skin, 6), 0.03, -0.31, -0.022).rotation.set(0.9, 0, 0.5);
+    add(g, sph(0.0105, m.skin, 6, 5), 0.02, -0.322, -0.037);
     return g;
   };
   const thigh = () => {
     const g = new THREE.Group();
-    add(g, lathe([[0.118, -0.46], [0.115, -0.3], [0.105, -0.12], [0.098, 0]], m.hakama, 5, 1, 14));
+    add(g, lathe([[0.118, -0.46], [0.117, -0.3], [0.108, -0.12], [0.098, 0]], m.hakama, 5, 1, 20));
     if (armored) for (let i = 0; i < 3; i++) add(g, lame(0.15, 0.078), 0, -0.1 - i * 0.072, -0.11 - i * 0.004);
     return g;
   };
@@ -460,11 +566,14 @@ export function buildParts(style) {
       add(g, cyl(0.067, 0.067, 0.016, m.lace, 10), 0, -0.1, 0);
       add(g, cyl(0.052, 0.052, 0.016, m.lace, 10), 0, -0.38, 0);
     } else {
-      add(g, lathe([[0.135, -0.3], [0.128, -0.15], [0.118, 0]], m.hakama, 5, 1, 14));
-      add(g, cyl(0.045, 0.04, 0.17, m.white, 10), 0, -0.375, 0);
+      add(g, lathe([[0.137, -0.3], [0.132, -0.22], [0.126, -0.1], [0.118, 0]], m.hakama, 5, 1, 20));
+      add(g, lathe([[0.04, -0.455], [0.043, -0.4], [0.05, -0.32], [0.047, -0.28]], m.white, 1, 1, 14));      // ankle and calf in the tabi
     }
-    add(g, box(0.085, 0.055, 0.17, m.white), 0, -0.478, -0.04);
-    add(g, sph(0.045, m.white, 10, 8), 0, -0.482, -0.13).scale.set(0.95, 0.6, 1.1);
+    // the foot in its tabi: heel, arch, ball, the big toe apart from the rest
+    add(g, sph(0.043, m.white, 12, 8), 0, -0.476, 0.012).scale.set(0.95, 0.78, 1);
+    add(g, sph(0.046, m.white, 12, 8), 0, -0.478, -0.06).scale.set(0.9, 0.62, 1.75);
+    add(g, sph(0.024, m.white, 10, 6), 0.021, -0.487, -0.146).scale.set(1, 0.72, 1.5);
+    add(g, sph(0.03, m.white, 10, 6), -0.02, -0.487, -0.138).scale.set(1.05, 0.66, 1.45);
     add(g, box(0.097, 0.014, 0.255, m.straw), 0, -0.512, -0.062);
     add(g, box(0.092, 0.008, 0.012, m.straw), 0, -0.452, -0.1);
     add(g, box(0.012, 0.008, 0.1, m.straw), 0, -0.455, -0.14).rotation.x = -0.3;

@@ -5,6 +5,41 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { mergeStatic } from './perf.js';
 import { materials, setGroup, rand, snapPrev, syncMesh } from './physics.js';
+import { bake, fbmField, sstep, rbox, put, tint, turnUV, scaleUV, mergeGeos } from './envkit.js';
+
+/** Fired clay with throwing rings; with `glazed`, a dark glaze poured over the shoulder and run down in tongues. */
+function potMaps(glazed) {
+  const S = 256, speck = fbmField(S, S, 64, 64, 2, 301), blot = fbmField(S, S, 5, 5, 4, 302), run = fbmField(S, S, 14, 1, 3, 303);
+  return bake(S, S, (x, y, o) => {
+    const i = y * S + x, v = 1 - y / S, ring = Math.sin(v * 110 + blot[i] * 3) * 0.5 + 0.5;
+    const k = 0.84 + 0.05 * ring + 0.26 * (blot[i] - 0.5) + 0.14 * (speck[i] - 0.5);
+    const gl = glazed ? sstep(-0.02, 0.02, v - 0.36 - run[i] * 0.3) : 0, lip = glazed ? sstep(0.06, 0.0, Math.abs(v - 0.36 - run[i] * 0.3)) : 0;
+    o[0] = (168 * (1 - gl) + 44 * gl + lip * 70) * k; o[1] = (108 * (1 - gl) + 44 * gl + lip * 80) * k; o[2] = (80 * (1 - gl) + 66 * gl + lip * 70) * k;
+    o[3] = ring * 0.1 + speck[i] * 0.25 + blot[i] * 0.3 + gl * 0.3;
+    o[4] = 0.85 - gl * 0.68;
+  }, { bump: 2.2, rough: true });
+}
+
+/** The head of a sake cask: pale boards with the brewer's mark brushed on. */
+function lidTexture() {
+  const c = document.createElement('canvas');
+  c.width = c.height = 128;
+  const g = c.getContext('2d');
+  g.fillStyle = '#d9c7a0'; g.fillRect(0, 0, 128, 128);
+  for (let x = 0; x < 128; x++) { g.fillStyle = `rgba(90,60,30,${0.05 + 0.1 * Math.abs(Math.sin(x * 0.7 + Math.sin(x * 0.13) * 3))})`; g.fillRect(x, 0, 1, 128); }
+  g.fillStyle = 'rgba(60,40,20,0.5)';
+  for (const x of [32, 64, 96]) g.fillRect(x, 0, 1.5, 128);
+  g.strokeStyle = '#8c1c16'; g.lineWidth = 7;
+  g.beginPath(); g.arc(64, 64, 30, 0, 6.3); g.stroke();
+  g.strokeStyle = '#1c1612'; g.lineWidth = 8; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(48, 54); g.lineTo(80, 54); g.moveTo(64, 44); g.lineTo(64, 84); g.moveTo(50, 70); g.lineTo(78, 70); g.stroke();
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/** Crisp facets on a turned shape (a six-sided lantern roof must not shade like a cone). */
+const faceted = (geo) => { const g = geo.toNonIndexed(); g.computeVertexNormals(); return g; };
 
 const KINDS = {
   crate: { hp: 28, mass: 22, dynamic: true, impact: 5.5, sound: 'wood', chip: [0.34, 0.22, 0.12] },
@@ -32,31 +67,68 @@ export class Breakables {
     this.arena = arena;
     this.items = [];
     this.pending = [];       // damage from collisions, applied after the physics step
-    const M = arena.M;
+    const M = arena.M, T = arena.T;
+    const white = (g) => tint(g, 1, 1, 1), dark = (g) => tint(g, 0.42, 0.37, 0.34);
     this.mat = {
-      paper: new THREE.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.95, side: THREE.DoubleSide, emissive: 0x3a3020, emissiveIntensity: 0.35 }),
-      clay: new THREE.MeshStandardMaterial({ color: 0x8a5236, roughness: 0.6, side: THREE.DoubleSide }),
-      glaze: new THREE.MeshStandardMaterial({ color: 0x2c2a3c, roughness: 0.25, metalness: 0.2, side: THREE.DoubleSide }),
+      paper: new THREE.MeshStandardMaterial({ color: 0xe9e2cf, roughness: 0.95, side: THREE.DoubleSide, emissive: 0x3a3020, emissiveIntensity: 0.35, normalMap: T.plaster.normalMap, normalScale: new THREE.Vector2(0.4, 0.4) }),
+      clay: new THREE.MeshStandardMaterial({ ...potMaps(false), roughness: 1, side: THREE.DoubleSide }),
+      glaze: new THREE.MeshStandardMaterial({ ...potMaps(true), roughness: 1, metalness: 0.05, side: THREE.DoubleSide }),
+      // boards and battens of a crate, straw and rope of a cask: one material each, the darker parts tinted per vertex
+      crate: new THREE.MeshStandardMaterial({ ...T.plank, color: 0xb09880, roughness: 0.88, vertexColors: true }),
+      cask: new THREE.MeshStandardMaterial({ ...T.strawWrap, color: 0xd8c9a0, roughness: 0.95, vertexColors: true }),
+      lid: new THREE.MeshStandardMaterial({ map: lidTexture(), normalMap: T.wood.normalMap, roughness: 0.8 }),
       wood: M.wood, dark: M.darkWood, straw: M.straw, stone: M.stone, glow: M.glow, plaster: M.plaster,
     };
+    // ---- a crate: boarded sides inside a frame of battens with a brace across each face
+    const crate = [white(rbox(0.66, 0.66, 0.66, 0.01, 1))];
+    for (let f = 0; f < 6; f++) {
+      const face = [];
+      for (const s of [-1, 1]) {
+        face.push(put(turnUV(rbox(0.7, 0.085, 0.03, 0.008, 1), 1, 0.25), 0, s * 0.3075, 0.335));
+        face.push(put(scaleUV(rbox(0.085, 0.53, 0.03, 0.008, 1), 0.25, 1), s * 0.3075, 0, 0.335));
+      }
+      face.push(put(turnUV(rbox(0.74, 0.075, 0.026, 0.008, 1), 1, 0.25), 0, 0, 0.332, 0, 0, f % 2 ? 0.785 : -0.785));
+      for (const g of face) { if (f < 4) g.rotateY(f * Math.PI / 2); else g.rotateX(f === 4 ? Math.PI / 2 : -Math.PI / 2); crate.push(dark(g)); }
+    }
+    // ---- a sake cask in its straw coat, lashed with rope
+    const caskProfile = [[0.2, -0.4], [0.262, -0.395], [0.288, -0.2], [0.3, 0.05], [0.298, 0.3], [0.285, 0.4], [0.2, 0.4]];
+    const cask = [white(new THREE.LatheGeometry(caskProfile.map(([r, y]) => new THREE.Vector2(r, y)), 24))];
+    for (const [ry, rr] of [[-0.27, 0.288], [-0.22, 0.292], [0.02, 0.303], [0.07, 0.303], [0.28, 0.3], [0.33, 0.296]]) cask.push(tint(put(new THREE.TorusGeometry(rr, 0.017, 6, 28), 0, ry, 0, Math.PI / 2), 0.5, 0.4, 0.27));
+    for (let k = 0; k < 6; k++) {      // the cords running up between the hoops
+      const a = k * Math.PI / 3;
+      cask.push(tint(put(new THREE.CylinderGeometry(0.012, 0.012, 0.56, 5), Math.sin(a) * 0.305, 0.03, Math.cos(a) * 0.305, 0, 0, 0), 0.5, 0.4, 0.27));
+    }
+    // ---- a stone lantern (ishidōrō): six-sided, a fire box on a pillar under a heavy roof
+    const lv = (pts, seg) => new THREE.LatheGeometry(pts.map(([r, y]) => new THREE.Vector2(r, y)), seg);
+    const lPost = lv([[0.13, -0.45], [0.145, -0.4], [0.115, -0.2], [0.105, 0.1], [0.115, 0.36], [0.15, 0.45]], 14);
+    const lPlat = faceted(lv([[0.15, -0.07], [0.3, 0.0], [0.33, 0.04], [0.33, 0.07], [0.0, 0.07]], 6));
+    const lFrame = mergeGeos([
+      ...[0, 1, 2, 3, 4, 5].map((k) => put(rbox(0.05, 0.3, 0.05, 0.008, 1), Math.sin(k * Math.PI / 3 + Math.PI / 6) * 0.165, 0, Math.cos(k * Math.PI / 3 + Math.PI / 6) * 0.165, 0, k * Math.PI / 3 + Math.PI / 6, 0)),
+      // two of the six sides are closed, carved with a moon and a sun window in the real thing
+      ...[1, 4].map((k) => put(rbox(0.17, 0.3, 0.03, 0.006, 1), Math.sin(k * Math.PI / 3) * 0.145, 0, Math.cos(k * Math.PI / 3) * 0.145, 0, k * Math.PI / 3, 0)),
+    ]);
+    const lRoof = mergeGeos([
+      faceted(lv([[0.2, -0.15], [0.5, -0.13], [0.52, -0.08], [0.36, -0.02], [0.2, 0.06], [0.09, 0.15], [0.0, 0.15]], 6)),
+      lv([[0.09, 0.14], [0.05, 0.15], [0.07, 0.19], [0.085, 0.25], [0.05, 0.31], [0.0, 0.33]], 10),      // the jewel on top
+    ]);
     this.geo = {
-      crate: new THREE.BoxGeometry(0.7, 0.7, 0.7),
-      crateEdge: new THREE.BoxGeometry(0.72, 0.08, 0.72),
-      panel: new THREE.BoxGeometry(0.68, 0.68, 0.04),
-      barrel: new THREE.CylinderGeometry(0.3, 0.26, 0.8, 14),
-      stave: new THREE.BoxGeometry(0.21, 0.78, 0.03),
-      lid: new THREE.CylinderGeometry(0.27, 0.27, 0.03, 14),
-      rope: new THREE.TorusGeometry(0.295, 0.016, 6, 20),
-      pot: new THREE.LatheGeometry([[0.07, 0], [0.15, 0.08], [0.17, 0.2], [0.13, 0.32], [0.08, 0.36], [0.1, 0.4]].map(([r, y]) => new THREE.Vector2(r * 1.9, (y - 0.2) * 1.9)), 16),     // waist-high storage jar
-      shard: new THREE.BoxGeometry(0.22, 0.26, 0.03),
+      crate: mergeGeos(crate, true),
+      panel: white(rbox(0.68, 0.68, 0.04, 0.008, 1)),
+      barrel: mergeGeos(cask, true),
+      stave: white(scaleUV(rbox(0.21, 0.78, 0.03, 0.008, 1), 0.3, 1)),
+      lid: new THREE.CylinderGeometry(0.262, 0.262, 0.03, 24),
+      pot: new THREE.LatheGeometry([[0.0, 0.004], [0.07, 0], [0.105, 0.02], [0.15, 0.08], [0.168, 0.14], [0.17, 0.2], [0.158, 0.26], [0.13, 0.32], [0.096, 0.35], [0.082, 0.365], [0.088, 0.39], [0.104, 0.4], [0.098, 0.408], [0.08, 0.395], [0.07, 0.37]]
+        .map(([r, y]) => new THREE.Vector2(r * 1.9, (y - 0.2) * 1.9)), 28),     // waist-high storage jar
+      shard: rbox(0.22, 0.26, 0.03, 0.01, 1),
       paper: new THREE.BoxGeometry(0.38, 0.52, 0.012),
       stick: new THREE.BoxGeometry(0.04, 1.7, 0.05),
       rail: new THREE.BoxGeometry(1.64, 0.04, 0.05),
-      lBase: new THREE.CylinderGeometry(0.3, 0.36, 0.2, 6),
-      lPost: new THREE.CylinderGeometry(0.11, 0.14, 0.9, 8),
-      lPlat: new THREE.CylinderGeometry(0.32, 0.18, 0.14, 6),
-      lLamp: new THREE.BoxGeometry(0.3, 0.3, 0.3),
-      lRoof: new THREE.ConeGeometry(0.5, 0.3, 6),
+      lBase: mergeGeos([faceted(lv([[0.38, -0.1], [0.38, -0.02], [0.33, 0.0], [0.3, 0.06], [0.2, 0.1], [0.0, 0.1]], 6))]),
+      lPost, lPlat, lRoof,
+      lLamp: lFrame,
+      // everything above the foot as one piece while the lantern stands
+      lUpper: mergeGeos([put(lPost.clone(), 0, 0.65, 0), put(lPlat.clone(), 0, 1.17, 0), put(lFrame.clone(), 0, 1.39, 0), put(lPlat.clone(), 0, 1.6, 0, Math.PI, 0, 0, 0.8), put(lRoof.clone(), 0, 1.7, 0)]),
+      lGlow: new THREE.CylinderGeometry(0.135, 0.135, 0.28, 6),
     };
     this.spawnAll();
   }
@@ -88,13 +160,12 @@ export class Breakables {
     let y = 0;
     const item = { kind, K, hp: K.hp, mesh, body, broken: false, light: null, phase: Math.random() * 100 };
     if (kind === 'crate') {
-      part(G.crate, M.wood); part(G.crateEdge, M.dark);
+      part(G.crate, M.crate);
       body.addShape(new CANNON.Box(new CANNON.Vec3(0.35, 0.35, 0.35)));
       y = 0.35;
     } else if (kind === 'barrel') {
-      part(G.barrel, M.straw);
-      for (const ry of [-0.26, 0, 0.26]) part(G.rope, M.dark, 0, ry, 0).rotation.x = Math.PI / 2;
-      part(G.lid, M.plaster, 0, 0.4, 0);
+      part(G.barrel, M.cask);
+      part(G.lid, M.lid, 0, 0.392, 0);
       body.addShape(new CANNON.Cylinder(0.3, 0.28, 0.8, 12));
       y = 0.4;
     } else if (kind === 'pot') {
@@ -110,10 +181,8 @@ export class Breakables {
       y = 0.86;
     } else {
       part(G.lBase, M.stone, 0, 0.1, 0);
-      item.upper = [
-        part(G.lPost, M.stone, 0, 0.65, 0), part(G.lPlat, M.stone, 0, 1.17, 0),
-        part(G.lLamp, M.glow, 0, 1.39, 0), part(G.lRoof, M.stone, 0, 1.7, 0),
-      ];
+      item.upper = [part(G.lUpper, M.stone), part(G.lGlow, M.glow, 0, 1.39, 0)];
+      item.upper[1].castShadow = false;
       body.addShape(new CANNON.Box(new CANNON.Vec3(0.3, 0.95, 0.3)), new CANNON.Vec3(0, 0.95, 0));
       item.light = new THREE.PointLight(0xff9a48, 10, 0, 2);
       item.light.position.set(x * 0.95, 1.5, z * 0.95);
@@ -134,7 +203,7 @@ export class Breakables {
       });
     }
     world.addBody(body);
-    if (kind === 'screen' || kind === 'barrel') mergeStatic(mesh);      // dozens of slats and panes: one draw call per material
+    if (kind === 'screen') mergeStatic(mesh);      // dozens of slats and panes: one draw call per material
     scene.add(mesh);
     syncMesh(mesh, body);
     this.items.push(item);
@@ -174,16 +243,16 @@ export class Breakables {
     const P = (geo, mat, x, y, z, rx, ry, rz, mass, hx, hy, hz) => pieces.push([geo, mat, new THREE.Vector3(x, y, z), new THREE.Euler(rx, ry, rz), mass, [hx, hy, hz]]);
     if (item.kind === 'crate') {
       for (const s of [-1, 1]) {
-        P(G.panel, M.wood, 0, 0, s * 0.33, 0, 0, 0, 2.5, 0.34, 0.34, 0.02);
-        P(G.panel, M.wood, s * 0.33, 0, 0, 0, Math.PI / 2, 0, 2.5, 0.34, 0.34, 0.02);
-        P(G.panel, M.wood, 0, s * 0.33, 0, Math.PI / 2, 0, 0, 2.5, 0.34, 0.34, 0.02);
+        P(G.panel, M.crate, 0, 0, s * 0.33, 0, 0, 0, 2.5, 0.34, 0.34, 0.02);
+        P(G.panel, M.crate, s * 0.33, 0, 0, 0, Math.PI / 2, 0, 2.5, 0.34, 0.34, 0.02);
+        P(G.panel, M.crate, 0, s * 0.33, 0, Math.PI / 2, 0, 0, 2.5, 0.34, 0.34, 0.02);
       }
     } else if (item.kind === 'barrel') {
       for (let i = 0; i < 8; i++) {
         const a = i * Math.PI / 4;
-        P(G.stave, M.straw, Math.sin(a) * 0.27, 0, Math.cos(a) * 0.27, 0, a, 0, 1.6, 0.105, 0.39, 0.015);
+        P(G.stave, M.cask, Math.sin(a) * 0.27, 0, Math.cos(a) * 0.27, 0, a, 0, 1.6, 0.105, 0.39, 0.015);
       }
-      P(G.lid, M.plaster, 0, 0.38, 0, 0, 0, 0, 1.5, 0.19, 0.015, 0.19);
+      P(G.lid, M.lid, 0, 0.38, 0, 0, 0, 0, 1.5, 0.19, 0.015, 0.19);
       P(G.lid, M.dark, 0, -0.38, 0, 0, 0, 0, 1.5, 0.19, 0.015, 0.19);
     } else if (item.kind === 'pot') {
       const mat = item.mesh.children[0].material;
@@ -260,7 +329,8 @@ export class Breakables {
       if (it.broken) continue;
       if (it.K.dynamic) syncMesh(it.mesh, it.body);
       if (it.light) {
-        const f = 0.85 + Math.sin(t * 9 + it.phase) * 0.06 + Math.sin(t * 21.7 + it.phase * 2) * 0.04 + Math.random() * 0.05;
+        // a flame behind paper: slow swells with a quicker tremble on top, never a jump
+        const f = 0.9 + Math.sin(t * 2.3 + it.phase) * 0.055 + Math.sin(t * 5.7 + it.phase * 2) * 0.035 + Math.sin(t * 13.1 + it.phase * 3) * 0.014;
         it.light.intensity = 11 * f * (it.boost || 1);
       }
     }

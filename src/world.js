@@ -233,8 +233,8 @@ export function buildPlatforms(game) {
   };
   const cx = -8.1, cz = 1.4;
   const TOP = 2.6;      // too high to jump onto from the ground: grab the edge and pull up, or take the step
-  box(cx, cz, 2.6, 2.6, TOP, M.darkWood);
-  box(cx + 1.85, cz, 1.1, 1.6, 0.95, M.wood);
+  box(cx, cz, 2.6, 2.6, TOP, M.planks || M.darkWood);
+  box(cx + 1.85, cz, 1.1, 1.6, 0.95, M.planks || M.wood);
   // deck planks, corner posts and a little roofed lantern post for looks
   const deck = sh(new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.08, 2.9), M.wood));
   deck.position.set(cx, TOP, cz);
@@ -245,7 +245,7 @@ export function buildPlatforms(game) {
     scene.add(post);
   }
   for (const y of [0.6, 1.3, 2.0]) {
-    const band = sh(new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.1, 2.66), M.stone));
+    const band = sh(new THREE.Mesh(new THREE.BoxGeometry(2.66, 0.1, 2.66), M.darkWood));
     band.position.set(cx, y, cz);
     scene.add(band);
   }

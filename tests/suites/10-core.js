@@ -517,5 +517,11 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   P.goRagdoll(null, null, false); const flat = P.parts.torso.scale.x;
   step(30); fresh(0, 8); step(30);
   check('Am Boden und nach dem Aufstehen bleibt die Figur heil', flat === 1 && P.state === 'active' && sane() === '' && Object.values(P.parts).every((o) => [o.position.x, o.position.y, o.position.z, o.quaternion.w].every(Number.isFinite)), flat);
+  // sound: every call is harmless whatever state the audio context is in, and the one-shots stay capped
+  {
+    const a = g.audio; let err = '';
+    try { for (let i = 0; i < 300; i++) { a.clank(1, 1.1); a.hit(1, !!(i & 1)); a.step(4, true, 1, 0.3); a.land(1); a.swish(!!(i & 1)); a.voice('effort'); a.voice('pain'); a.breath(1); a.sting(i & 1 ? 'kill' : 'wave'); a.pump(); a.update(1 / 60, g); } } catch (e) { err = String(e); }
+    check('Ton: alle Aufrufe sind harmlos, die Zahl der Stimmen bleibt begrenzt', err === '' && a.ends.length <= 40, err || a.ends.length);
+  }
   g.composer.render = realRender;
 }

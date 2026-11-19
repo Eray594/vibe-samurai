@@ -357,6 +357,7 @@ class Game {
       if (alive) return;
       if (!this.waveCleared && this.wave > 0) {
         this.waveCleared = true;
+        this.audio.sting?.('wave');
         this.ctl.heals = Math.min(this.ctl.maxHeals, this.ctl.heals + 1);
         this.callout(`WELLE ${this.wave} ÜBERSTANDEN`, null, 'parry');
         this.progress.earn(15 * this.wave);
@@ -1471,6 +1472,7 @@ class Game {
       k.momentum = fwd >= 0 ? 1 + Math.min(0.3, fwd * 0.05) : Math.max(0.8, 1 + fwd * 0.08);
     }
     if (k.isPlayer) this.tutorial.event('cut');
+    if (heavy) this.audio.voice?.('effort', k.isPlayer ? 1 : 0.6);
     if (k.isPlayer) { if (heavy) { this.audio.whooshBurst(0.7); this.fx.fovKick = Math.max(this.fx.fovKick, 0.6); } }
     else if (k.getPos(_a).distanceTo(this.player.getPos(_b)) < 7) this.audio.whooshBurst(0.22);
   }
@@ -1657,6 +1659,7 @@ class Game {
         e.labelEl = null;
         if (e.team === 1) {
           this.kills++;
+          this.audio.sting?.('kill');
           if (!e.human) { this.progress.earn(10 * (e.kind?.rank ?? 1)); this.ach.add('kills'); }
           this.defense.onKill(e);
           if (this.perk.lifesteal && this.player.state === 'active') {
@@ -2163,6 +2166,7 @@ class Game {
     this.updateRun(dt);
 
     this.effects.update(dt);
+    this.audio.update(dt, this);
     this.arena.update(realDt);
     this.updateCamera(realDt);
     this.fx.chroma = Math.max(0, this.fx.chroma - realDt * 3);

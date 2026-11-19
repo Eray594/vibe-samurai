@@ -269,6 +269,7 @@ export class Defense {
 
   waveCleared() {
     const g = this.game, w = g.wave;
+    g.audio.sting?.('wave');
     this.phase = 'build';
     this.buildT = 25;
     const pay = 30 + 10 * w;

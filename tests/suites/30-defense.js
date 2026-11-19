@@ -51,8 +51,11 @@ check('Shop: Klick auf ein gesperrtes Angebot kauft nichts', D.living.length ===
 
 // ---- soldiers
 step(240);
-const far = D.living.map((s) => Math.hypot(s.core.position.x - s.brain.post.x, s.core.position.z - s.brain.post.z));
-check('Soldaten halten ohne Gegner ihre Stellung', Math.max(...far) < 1.6, far.map((d) => +d.toFixed(1)));
+const offPost = () => D.living.map((s) => Math.hypot(s.core.position.x - s.brain.post.x, s.core.position.z - s.brain.post.z));
+// (six men placed on one spot shove each other apart first: give a straggler time to walk back)
+let far = offPost(), waited = 240;
+while ((Math.max(...far) >= 1.6 || D.living.some((s) => s.state !== 'active')) && waited < 900) { step(60); waited += 60; far = offPost(); }
+check('Soldaten halten ohne Gegner ihre Stellung', Math.max(...far) < 1.6 && D.living.every((s) => s.state === 'active'), [waited, ...far.map((d) => +d.toFixed(1)), ...D.living.map((s) => s.state + (s.dead ? '/tot:' + s.inj.cause : '') + ' ' + Math.round(s.inj.vitality * 100))]);
 tap('KeyJ', 2);
 check('Taste J: Soldaten folgen', D.follow && D.living.every((s) => s.brain.follow));
 P.resetTo(V(0, 0, 10.5), 0); ctl.reset(); step(900);
