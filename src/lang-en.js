@@ -86,6 +86,12 @@ export const EN = {
   'im Ausholen:': 'during the wind-up:', 'Finte': 'Feint', '· Maus beim Abwehren zum Hieb hin ziehen:': '· pull the mouse towards the cut as you deflect:', 'Starke Abwehr': 'Strong deflect',
   'Hiebe aus dem Lauf treffen härter, im Zurückweichen schwächer': 'Cuts out of a run hit harder, cuts while backing away softer',
   'Finte!': 'Feint!', 'Starke Abwehr!': 'Strong deflect!',
+  'Die Deckung hat eine Seite: Maus ziehen trägt die Klinge hinüber · drei Abwehren in Folge:': 'The guard has a side: pulling the mouse carries the blade across · three deflects in a row:',
+  'Parier-Kette': 'Parry chain', 'Parier-Kette!': 'Parry chain!', 'Kette ×#': 'Chain ×#', 'Kette #': 'chain #',
+  'in der Deckung: schneller Stoß · seitlich gehen, während der Hieb landet:': 'in the guard: a quick thrust · step sideways as the blow lands:', 'ins Leere lenken': 'lead it past',
+  'zweimal:': 'twice:', 'Rolle': 'roll', '· seitlich mit erfasstem Ziel:': '· sideways with a target locked:', 'Umkreisen': 'circle round', '· Maus im Hieb lenkt die Klinge': '· the mouse guides the blade during a cut',
+  'Ins Leere gelenkt!': 'Led past!', 'Falsche Seite': 'Wrong side', 'Abgefangen': 'Caught it', 'Deckung links': 'Guard left', 'Deckung rechts': 'Guard right',
+  'Deckung mit Seite (Maus trägt die Klinge nach links oder rechts)': 'Guard with a side (the mouse carries the blade left or right)',
 
   // ---- settings, dōjō, achievements
   'Einstellungen': 'Settings', 'Mausempfindlichkeit': 'Mouse sensitivity', 'Lautstärke': 'Volume', 'Blut und Blutlachen': 'Blood and pools of blood',

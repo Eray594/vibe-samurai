@@ -117,6 +117,9 @@ const T_INV = new THREE.Matrix4();
 
 let fighterIdCounter = 1;
 
+const UP_AXIS = new THREE.Vector3(0, 1, 0);
+const STANCE_PART = 0.6;         // share of a stride the foot spends on the ground
+
 export class Samurai {
   constructor(game, opts) {
     this.game = game;
@@ -216,6 +219,10 @@ export class Samurai {
     this.prevHandLocal = this.intent.hand.clone();
     this.handVelLocal = new THREE.Vector3();
     this.twist = 0;
+    this.hipYaw = 0;             // the hips turn into the direction of travel, the chest stays on the opponent
+    this.accLean = new THREE.Vector2();   // leaning into speeding up, braking and turning (x: sideways, y: forwards)
+    this.velPrev = new THREE.Vector2();
+    this.flinchT = 0; this.flinchP = 0; this.flinchR = 0; this.armSag = 0;   // a hit shows where it landed
     this.lean = 0;
     this.gaitPhase = Math.random() * 6;
     this.weaponTarget = { pos: new THREE.Vector3(), quat: new THREE.Quaternion(), vel: new THREE.Vector3(), angVel: new THREE.Vector3() };
@@ -300,7 +307,7 @@ export class Samurai {
     if (off.length() > reach) hand.copy(sh).add(off.setLength(reach));
     // weak / wounded arms can't hold the weapon up
     const armStr = this.inj.armStrength(this.weapon?.def.twoHanded, this.offHanded);
-    hand.y -= (1 - armStr) * 0.35;
+    hand.y -= (1 - armStr) * 0.35 + (this.armSag > 0 ? 0.2 * (this.armSag / 0.5) : 0);       // a fresh hit on the arm: it drops for a moment
     if (this.brokenT > 0) { hand.y -= 0.28; hand.z += 0.1; }   // guard broken: the blade sags
     if (this.dizzyAmt > 0) hand.addScaledVector(this.wobble, 0.12 * this.dizzyAmt);
     if (hand.y < -0.35) hand.y = -0.35;
@@ -722,13 +729,16 @@ export class Samurai {
 
   // ---------------------------------------------------------------- moves
   /** Quick evasive step in a world direction. */
-  dash(dir) {
+  /** A dodge. `kind`: 'step' (short and quick) or 'roll' (further, longer untouchable, slower to follow up). */
+  dash(dir, kind = 'step') {
     if (this.state !== 'active' || this.dashCd > 0 || this.airborne) return false;
     const legs = this.inj.legStrength;
     if (legs < 0.35) return false;
     if (this.heldBy || this.mountH > 0 || this.bound || this.hang) return false;
     const b = this.core;
-    const dg = this.dodge || { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
+    const base = this.dodge || { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
+    const roll = kind === 'roll';
+    const dg = roll ? { speed: base.speed * 1.12, time: 0.3, iframe: Math.max(0.42, base.iframe + 0.12), cd: base.cd + 0.22 } : base;
     const wet = 1 + (1 - (this.game.grip ?? 1)) * 0.5;                 // you keep sliding on wet ground
     const sp = 10 * this.speedMul * dg.speed * (0.5 + 0.5 * legs);
     b.velocity.x = dir.x * sp;
@@ -739,14 +749,29 @@ export class Samurai {
     this.dashT = dg.time * wet;
     this.iframeT = dg.iframe;
     this.slideT = 0;
-    if (dg.roll && this.ghostT <= 0) {
-      // light on the feet: the step is a roll over the shoulder
+    this.dodgeKind = kind;
+    if (roll && this.ghostT <= 0) {
+      // over the shoulder and up again
       this.rollT = this.rollDur;
       this.rollAxis.set(dir.z, 0, -dir.x).normalize();
     }
     this.dashCd = this.isPlayer || this.human ? dg.cd : 1.2;
     this.game.onFighterDash?.(this, dir);
     return true;
+  }
+
+  /** Show a hit where it landed: the body jerks away from it, a struck arm drops, a struck head snaps back. */
+  flinch(zone, dirWorld, sev) {
+    if (this.state !== 'active') return;
+    const yq = this.yawQuat();
+    T.fwd.set(0, 0, -1).applyQuaternion(yq); T.right.set(1, 0, 0).applyQuaternion(yq);
+    const f = dirWorld.x * T.fwd.x + dirWorld.z * T.fwd.z, r = dirWorld.x * T.right.x + dirWorld.z * T.right.z;
+    const amt = clamp(0.12 + sev * 0.9, 0.12, 0.5) * (zone === 'head' ? 1.3 : zone.startsWith('leg') ? 0.5 : 1);
+    this.flinchT = 0.34;
+    this.flinchP = -f * amt;            // hit from the front: thrown back
+    this.flinchR = -r * amt;
+    if (zone.startsWith('arm')) this.armSag = 0.5;
+    if (zone === 'head') this.balance = Math.max(0, this.balance - 0.1);
   }
 
   jump(boost = 1) {
@@ -1107,10 +1132,12 @@ export class Samurai {
     const wob = clamp(1 - this.balance / 0.7, 0, 1) * (this.staggerT > 0 ? 1 : 0.45);
     const wt = this.game.time * 7 + this.id * 1.7;
     const sway = Math.sin(wt) * 0.24 * wob, pitch = (0.16 + Math.sin(wt * 0.63) * 0.1) * wob + (this.skidT > 0 ? -0.3 * (this.skidT / 0.26) : 0);
-    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(-this.lean - this.runLean - pitch, this.twist, sway, 'YXZ')));
+    const fl = this.flinchT > 0 ? (this.flinchT / 0.34) ** 2 : 0;
+    P.pelvis.quaternion.multiply(T.q2.setFromAxisAngle(UP_AXIS, this.hipYaw));
+    P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(-this.lean - this.runLean - pitch - this.accLean.y + this.flinchP * fl, this.twist, sway + this.accLean.x + this.flinchR * fl, 'YXZ')));
     const tq = P.torso.quaternion;
     P.head.position.set(0, 0.5, 0).applyQuaternion(tq).add(P.torso.position);
-    P.head.quaternion.copy(tq).multiply(T.q2.setFromEuler(T.eul.set((this.lean + this.runLean) * 0.6, -this.twist * 0.6, 0, 'YXZ')));
+    P.head.quaternion.copy(tq).multiply(T.q2.setFromEuler(T.eul.set((this.lean + this.runLean) * 0.6 + this.flinchP * fl * 0.8, -this.twist * 0.6, -this.accLean.x * 0.5 + this.flinchR * fl * 0.6, 'YXZ')));
 
     // frame vectors
     const yq = this.yawQuat();
@@ -1149,7 +1176,28 @@ export class Samurai {
     const vx = this.core.velocity.x, vz = this.core.velocity.z;
     const speed = Math.hypot(vx, vz);
     const run = clamp((speed - 4) / 4, 0, 1);
-    this.gaitPhase += dt * (2.5 + speed * 2.7) * (speed > 0.15 ? 1 : 0);
+    // a stride that fits the speed: the foot on the ground travels back exactly as fast as the body moves
+    // forward (so it stays put instead of skating), then swings forward and comes down again
+    const strideLen = clamp(0.2 + 0.055 * speed, 0.2, 0.56);
+    const cadence = clamp(speed * STANCE_PART / (2 * strideLen), 0, 3.4);
+    this.gaitPhase += dt * Math.PI * 2 * cadence * (speed > 0.15 ? 1 : 0);
+    if (dt > 0) {
+      // leaning: into speeding up and out of braking, and into a turn
+      const ax = clamp((vx - this.velPrev.x) / dt, -40, 40), az = clamp((vz - this.velPrev.y) / dt, -40, 40);
+      this.velPrev.set(vx, vz);
+      const k2 = dampFactor(7, dt), calm = this.dashT > 0 || this.staggerT > 0 || this.airborne ? 0 : 1;
+      this.accLean.x += (clamp(-(ax * T.right.x + az * T.right.z) * 0.011, -0.16, 0.16) * calm - this.accLean.x) * k2;
+      this.accLean.y += (clamp((ax * T.fwd.x + az * T.fwd.z) * 0.011, -0.14, 0.18) * calm - this.accLean.y) * k2;
+      // hips: towards where the feet are going (backwards: the mirror of it), never more than a third of a turn
+      let want = 0;
+      if (speed > 0.6 && calm && this.mountH <= 0 && this.kickT <= 0) {
+        const f = vx * T.fwd.x + vz * T.fwd.z, r = vx * T.right.x + vz * T.right.z;
+        want = clamp(Math.atan2(-r * Math.sign(f || 1), Math.abs(f)), -0.6, 0.6) * clamp(speed / 3, 0, 1);
+      }
+      this.hipYaw += (want - this.hipYaw) * dampFactor(8, dt);
+      this.flinchT = Math.max(0, this.flinchT - dt);
+      this.armSag = Math.max(0, this.armSag - dt);
+    }
     // lean: into the run, back for a kick, hunched over a body wound
     const leanTo = this.slideT > 0 ? -0.5 : this.kickT > 0 ? -0.24 : (this.sprinting ? 0.32 : 0.06) * clamp(speed / 6, 0, 1) + 0.2 * Math.min(1, this.inj.parts.torso);
     if (dt > 0) this.runLean += (leanTo - this.runLean) * dampFactor(this.kickT > 0 || this.slideT > 0 ? 16 : 6, dt);
@@ -1157,16 +1205,18 @@ export class Samurai {
     const s = clamp(speed / 3, 0, 1);
     const mdx = speed > 0.05 ? vx / speed : 0, mdz = speed > 0.05 ? vz / speed : 0;
     for (const [side, name, stance] of [[1, 'R', 0.2], [-1, 'L', -0.2]]) {
-      const hip = T.a.set(side * LEG.hipX, LEG.hipY, 0).applyQuaternion(cq).add(cp).clone();
+      const hip = T.a.set(side * LEG.hipX, LEG.hipY, 0).applyQuaternion(P.pelvis.quaternion).add(cp).clone();
       const ph = this.gaitPhase + (side > 0 ? 0 : Math.PI);
+      const cyc = ((ph / (Math.PI * 2)) % 1 + 1) % 1, sw = cyc < STANCE_PART ? 0 : (cyc - STANCE_PART) / (1 - STANCE_PART);
+      const along = cyc < STANCE_PART ? 1 - 2 * cyc / STANCE_PART : -1 + 2 * smooth(sw);        // +1: just set down in front, -1: about to lift off behind
       const foot = T.e.set(cp.x, gy, cp.z)
         .addScaledVector(T.right, side * 0.15)
         .addScaledVector(T.fwd, stance * (1 - s));
       const legDmg = Math.min(1, this.inj.parts['leg' + name]);
-      const stride = (0.3 + 0.16 * run) * (1 - 0.6 * legDmg);
-      foot.x += mdx * Math.sin(ph) * stride * s;
-      foot.z += mdz * Math.sin(ph) * stride * s;
-      foot.y = gy + 0.085 + Math.max(0, Math.cos(ph)) * (0.13 + 0.1 * run) * s * (1 - 0.7 * legDmg);
+      const stride = strideLen * (1 - 0.6 * legDmg);
+      foot.x += mdx * along * stride * s;
+      foot.z += mdz * along * stride * s;
+      foot.y = gy + 0.085 + Math.sin(Math.PI * sw) * (0.11 + 0.12 * run) * s * (1 - 0.7 * legDmg);
       if (this.mountH > 0) {
         // astride: knees out, feet in the stirrups
         foot.copy(hip).addScaledVector(T.right, side * 0.3).addScaledVector(T.fwd, 0.12);

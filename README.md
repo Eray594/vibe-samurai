@@ -143,6 +143,12 @@ Die vollständige Tastenbelegung:
 | Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
 | RMB im Ausholen | **Finte**: nimmt den Hieb zurück; wer schon die Deckung hob, steht kurz offen |
 | Maus zum Hieb hin ziehen beim Abwehren | **Starke Abwehr**: bricht deutlich mehr Haltung |
+| Maus ziehen in der Deckung | Die Deckung hat eine **Seite**: die Klinge wandert nach links oder rechts (abschaltbar in den Einstellungen) |
+| drei Abwehren in Folge | **Parier-Kette**: jede weitet das nächste Zeitfenster, die dritte bricht die Haltung des Gegners |
+| LMB in der Deckung | schneller Stoß, danach steht die Deckung wieder |
+| seitlich gehen, während der Hieb landet | den Hieb **ins Leere lenken**: der Gegner stolpert vorbei |
+| Shift zweimal · seitlich mit erfasstem Ziel | **Rolle** · den Gegner **umkreisen** |
+| Maus während des Hiebs | lenkt die Bahn der Klinge ein Stück weit |
 | Backspace · Esc | Hof zurücksetzen · Pause (gibt die Maus für die Leiste oben frei) |
 
 ## Training

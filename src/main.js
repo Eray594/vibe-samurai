@@ -531,6 +531,7 @@ class Game {
         } else {
           this.audio.clank(c.speed / 22, 0.7);
           this.effects.sparksAt(c.point, c.speed * 0.8, 0.6);
+          if (w.attached && c.speed > 8 && !hs.breakable) this.bounce(w.owner, 0.7);        // stone gives nothing: the blade springs back
         }
         if (w.def.thrown) w.dead = true;
       }
@@ -571,10 +572,16 @@ class Game {
   guardHit(D, A, w, point, s) {
     if (this.time < w.blockedUntil) return;
     w.blockedUntil = this.time + 0.4;
-    const deflect = D.isPlayer || D.human ? D.guardT < (D.deflectWindow ?? DEFLECT_WINDOW) : D.aiDeflect;
+    // which side of the defender the cut comes in on (0: down the middle, as thrusts and overhead cuts do)
+    const dctl = D.isPlayer ? this.ctl : null;
+    let cutSide = 0;
+    if (dctl) { const lp = _c.copy(point).sub(D.getPos(_a)).applyQuaternion(_q.copy(D.yawQuat()).invert()); cutSide = lp.x > 0.07 ? 1 : lp.x < -0.07 ? -1 : 0; }
+    // the guard covers the side the blade is on; a cut on the other side can be stopped, but not deflected, and it costs
+    const wrongSide = !!dctl && this.settings.sideGuard && cutSide !== 0 && (dctl.blockSide || 1) !== cutSide && !A.atk?.thrust;
+    const deflect = (D.isPlayer || D.human ? D.guardT < (D.deflectWindow ?? DEFLECT_WINDOW) : D.aiDeflect) && !wrongSide;
     const crush = !!A.atk?.unblockable && !deflect;        // a blow with everything behind it goes through a plain block
     const impact = clamp(s / 11, 0.3, 1.3) * w.def.postureDmg * (A.swingHeavy ? 1.5 : 1) * (A.postureMul || 1) * (A.momentum || 1)
-      * (A.isPlayer ? this.perk.postureDmg : 1) * (crush ? 2.6 : 1);
+      * (A.isPlayer ? this.perk.postureDmg : 1) * (crush ? 2.6 : 1) * (wrongSide ? 1.7 : 1);
     const ap = A.getPos(_a), dp = D.getPos(_b);
     const away = _c.set(ap.x - dp.x, 0, ap.z - dp.z).normalize().clone();
     _cv.set(away.x, 0.5, away.z).scale(w.body.mass * (deflect ? 4 + s * 0.7 : 2 + s * 0.3), _cv);
@@ -599,8 +606,30 @@ class Game {
       else if (A.isPlayer) this.callout('ABGEWEHRT', point, 'small');
       if (D.human && D.ctl) D.ctl.counterT = 0.7;
       if (D.isPlayer) this.training.ok(A.atk?.unblockable ? 'heavy' : 'cut');
+      if (dctl) {
+        // deflect after deflect: each one widens the next, the third leaves him open
+        dctl.chain = dctl.chainT > 0 ? dctl.chain + 1 : 1; dctl.chainT = 2.6;
+        if (dctl.chain >= 3 && !broke && A.brokenT <= 0) {
+          dctl.chain = 0;
+          A.posture = A.postureMax; A.brokenT = Math.max(A.brokenT, 2.2);
+          this.callout('PARIER-KETTE!', point, 'crit');
+          this.onGuardBroken(A, point);
+        } else if (dctl.chain === 2) this.callout('KETTE ×2', null, 'small');
+      }
       if (broke) this.onGuardBroken(A, point);
+    } else if (dctl && !crush && this.slips(D, A)) {
+      // stepping off the line as it lands: the cut is led past, and he stumbles after it
+      const fwdA = A.forward(_a).clone();
+      A.stagger(fwdA.multiplyScalar(3.2), A.getPos(_b).setY(1.3), 0.4, 0.9);
+      if (A.brain) { A.brain.runner.cancel(); A.brain.recoilT = Math.max(A.brain.recoilT, 1.0); A.brain.comboLeft = 0; }
+      A.addPosture(POSTURE.deflected * 0.5);
+      this.effects.sparksAt(point, 16, 1);
+      this.audio.clank(0.5, 1.3);
+      this.callout('INS LEERE GELENKT!', point, 'parry');
+      this.ctl.counterT = 0.8;
     } else {
+      if (dctl) dctl.chain = 0;
+      if (wrongSide && s > 3) this.callout('FALSCHE SEITE', point, 'small');
       const broke = D.addPosture(POSTURE.block * impact);
       A.posture = Math.min(A.postureMax * 0.95, A.posture + 0.04);
       D.stagger(_a.copy(away).multiplyScalar(-(0.3 + impact * 0.5)), point, 0.03 * impact, 0.15);
@@ -611,6 +640,7 @@ class Game {
       if (crush && D.isPlayer && !broke) this.callout('DURCHBROCHEN!', point, 'crit');
       if (D.isPlayer) this.tutorial.event('block');
       if (A.isPlayer && s > 4) this.callout('GEBLOCKT', point, 'small');
+      if (s > 4) this.bounce(A, 0.6);
       (D.isPlayer ? this.ctl : D.ctl)?.spend(0.05 * impact);       // holding a blow costs breath
       if (broke) this.onGuardBroken(D, point);
     }
@@ -738,8 +768,11 @@ class Game {
       this.effects.sparksAt(c.point, 6 + s, 0.8);
       this.audio.clank(s / 14, 0.85);
       if (byPlayer && s > 6) this.callout('ABGEGLITTEN', c.point, 'small');
+      if (attacker && w.attached && s > 6) this.bounce(attacker, 0.5);
     } else {
       k.hitFlash = Math.min(1, sev * 2);
+      k.flinch(zone, dir, sev);
+      if (k.isPlayer) this.ctl.chain = 0;                 // being hit ends a parry chain
       const bleedy = kind === 'blunt' ? 0.3 : 1;
       this.effects.blood(c.point, dir, 3 + sev * 70 * bleedy, 1 + sev);
       if (kind !== 'blunt' || sev > 0.35) k.addWound(part, c.point, dir, sev, kind);
@@ -774,7 +807,11 @@ class Game {
       if (ev.includes('dead')) k.goRagdoll(launch(1), part, true);
       else if (severed && (severed.startsWith('thigh') || severed.startsWith('shin'))) k.goRagdoll(launch(0.6), 'pelvis', false);
       else if (ev.includes('ko')) k.goRagdoll(launch(0.7), part, false);
-      else if (heavyBlow) k.goRagdoll(launch(0.9), part, false);
+      else if (heavyBlow && this.braces(k)) {
+        // feet planted: a lunge step catches it instead of going down
+        k.stagger(dirH.clone().multiplyScalar(knockMag * 0.16), c.point, 0.5, 0.75);
+        if (k.isPlayer) { this.callout('ABGEFANGEN', null, 'parry'); this.shake = Math.max(this.shake, 0.7); }
+      } else if (heavyBlow) k.goRagdoll(launch(0.9), part, false);
       else {
         if (ev.includes('disarm') || (ev.includes('disarmL') && k.weapon?.def.twoHanded)) k.disarm(dirH.clone().multiplyScalar(2));
         const dv = dirH.clone().multiplyScalar(knockMag * 0.11);
@@ -812,7 +849,7 @@ class Game {
     else if (ev.includes('disarm') && !k.weapon?.attached) this.callout('ENTWAFFNET!', c.point, 'crit');
     else if (ev.includes('broken')) this.callout(`${up(Z)} GEBROCHEN!`, c.point, 'crit');
     else if (ev.includes('crippled')) this.callout(`${up(Z)} UNBRAUCHBAR!`, c.point, 'crit');
-    else if (heavyBlow) this.callout('NIEDERGESCHMETTERT!', c.point, 'crit');
+    else if (heavyBlow && k.state === 'ragdoll') this.callout('NIEDERGESCHMETTERT!', c.point, 'crit');
     else if (ev.includes('hurt')) this.callout(`${Z} verletzt`, c.point, 'small');
     else if (ev.includes('headWound')) this.callout('Kopfwunde', c.point, 'small');
     else if (ev.includes('severe')) this.callout(kind === 'thrust' ? 'Tiefer Stich' : 'Schwere Wunde', c.point, 'small');
@@ -1125,7 +1162,7 @@ class Game {
 
   /** Light fighters slip far and are hard to catch; armour makes the step short but quick to repeat. */
   dodgeFor(skin) {
-    if (skin.prot < 0.3) return { speed: 1.18, time: 0.23, iframe: 0.36, cd: 0.5, roll: true };
+    if (skin.prot < 0.3) return { speed: 1.18, time: 0.21, iframe: 0.34, cd: 0.44 };
     if (skin.prot > 0.6) return { speed: 0.86, time: 0.16, iframe: 0.24, cd: 0.36 };
     return { speed: 1, time: 0.19, iframe: 0.28, cd: 0.42 };
   }
@@ -1546,6 +1583,40 @@ class Game {
     return n;
   }
 
+  /** The blade met something that would not give (stone, a plate, a firm guard): it springs back and the cut is over. */
+  bounce(k, strength = 0.6) {
+    if (!k || k.state !== 'active') return false;
+    const ctl = k.isPlayer ? this.ctl : k.ctl;
+    const runner = ctl ? ctl.runner : k.brain?.runner;
+    const a = runner?.a;
+    if (!a || a.phase !== 'strike' || a.bounced) return false;
+    a.bounced = true;
+    // from where the hand is now, thrown a little back along the way it came; then the usual way home, a bit later
+    a.end = runner.hand.clone().lerp(a.wind, 0.28 * strength);
+    a.endDir = runner.bdir.clone().lerp(a.windDir, 0.3 * strength).normalize();
+    a.phase = 'recover'; a.t = 0;
+    a.recoverDur += 0.16 * strength;
+    if (k.brain) { k.brain.comboLeft = 0; k.brain.recoilT = Math.max(k.brain.recoilT, 0.25 * strength); }
+    else if (ctl) { ctl.buffer = 0; ctl.comboI = 0; }
+    if (k.isPlayer) { this.shake = Math.max(this.shake, 0.3 * strength); this.fx.chroma = Math.max(this.fx.chroma, 0.3); }
+    return true;
+  }
+
+  /** Feet planted (hardly moving, on the ground, not mid-cut on the move): a heavy blow can be caught with a step. */
+  braces(k) {
+    if (!(k.isPlayer || k.human) || k.airborne || k.staggerT > 0 || k.brokenT > 0 || k.inj.legStrength < 0.6) return false;
+    return Math.hypot(k.core.velocity.x, k.core.velocity.z) < 1.6;
+  }
+
+  /** In the guard and moving sideways across the attacker's line as the blow lands. */
+  slips(D, A) {
+    if (!D.guarding) return false;
+    const v = D.core.velocity, dp = D.getPos(_a), ap = A.getPos(_b);
+    const tx = ap.x - dp.x, tz = ap.z - dp.z, d = Math.hypot(tx, tz) || 1;
+    const lateral = Math.abs(v.x * (-tz / d) + v.z * (tx / d));
+    return lateral > 2.0;
+  }
+
   onJump(k) {
     this.effects.dust(k.getPos(_a), 6, 1.2);
   }
@@ -1868,7 +1939,9 @@ class Game {
     for (const [z, el] of Object.entries(ui.doll)) el.style.fill = injuryColor(inj.parts[z]);
     ui.doll.torso.style.fill = injuryColor(Math.max(inj.parts.torso, (1 - inj.blood) * 0.9));
     const st = P.brokenT > 0 ? 'Haltung gebrochen' : P.slideT > 0 ? 'Rutschen' : P.sprinting ? 'Sprint'
-      : this.ctl.mode === 'guard' ? STANCES[this.ctl.stance].name : STANCE[this.ctl.mode] || 'Chūdan';
+      : this.ctl.mode === 'guard' ? STANCES[this.ctl.stance].name
+        : this.ctl.mode === 'parry' && this.settings.sideGuard ? (this.ctl.blockSide < 0 ? 'Deckung links' : 'Deckung rechts') + (this.ctl.chain > 0 ? ` · Kette ${this.ctl.chain}` : '')
+          : STANCE[this.ctl.mode] || 'Chūdan';
     if (st !== this.lastStance) { ui.stance.textContent = st; this.lastStance = st; }
     const wn = P.weapon.attached ? P.weapon.def.name : 'entwaffnet';
     if (wn !== this.lastWeapon) { ui.weapon.textContent = wn; this.lastWeapon = wn; }

@@ -145,6 +145,12 @@ export class AttackRunner {
       const x = clamp(a.t / a.strikeDur, 0, 1), u = 0.45 * smooth(x) + 0.55 * x * Math.sqrt(x);
       arcLerp(this.hand, a.wind, a.end, u);
       turn(this.bdir, a.windDir, a.endDir, u);
+      if (a.bend) {
+        // the hand that guides the cut (the mouse, while it is under way) bends its path
+        const b = Math.sin(Math.PI * Math.min(1, x * 1.15));
+        this.hand.x += a.bend.x * b; this.hand.y += a.bend.y * b;
+        this.bdir.x += a.bend.x * 1.6 * b; this.bdir.y += a.bend.y * 1.6 * b; this.bdir.normalize();
+      }
       it.power = a.power;
       if (a.t >= a.strikeDur) { a.phase = 'recover'; a.t = 0; ev = 'recover'; }
     } else {

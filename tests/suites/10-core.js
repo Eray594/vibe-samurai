@@ -28,7 +28,9 @@ check('Iai (B halten, loslassen)', iaiMode === 'iai' && ctl.runner.a?.name === '
 // ---------------------------------------------------------------- stamina, whiff, roll, skid, tech
 fresh(); press('ShiftLeft'); step(2); const afterDash = ctl.stamina;
 check('Ausweichen kostet Ausdauer', afterDash < 0.9 && afterDash > 0.7, afterDash);
-check('Leichter Skin rollt', P.rollT > 0);
+check('Ein Tippen auf Shift ist ein Schritt, keine Rolle', P.rollT === 0 && P.dodgeKind === 'step', [P.rollT, P.dodgeKind]);
+step(6); press('ShiftLeft'); step(2);
+check('Zweimal Shift kurz hintereinander ist eine Rolle', P.rollT > 0 && P.dodgeKind === 'roll', [P.rollT, P.dodgeKind]);
 let minHead = 9; for (let i = 0; i < 24; i++) { g.frame(); minHead = Math.min(minHead, P.parts.head.position.y); }
 check('Rolle bleibt über dem Boden', minHead > 0.15, minHead);
 K.add('KeyW'); K.add('ShiftLeft'); let winded = false; for (let i = 0; i < 760; i++) { g.frame(); if (ctl.exhausted && !P.sprinting) winded = true; }
@@ -138,7 +140,8 @@ g.menu.toggle(true); check('Menü öffnet mit Dōjō-Angeboten', g.menu.open && 
 g.setMode('training'); step(10); const drills = [];
 for (let i = 0; i < 7; i++) {
   const d = g.training.drill, names = new Set(); P.iframeT = 0;
-  for (let f = 0; f < 600; f++) {
+  if (P.state !== 'active') fresh();          // knocked over in the last drill: back on the feet, or the partner has nobody to attack
+  for (let f = 0; f < 600 || (f < 1500 && !names.size && d !== 'passive' && d !== 'arrow'); f++) {
     // the partner is kept eager, so that whether he attacks within the time does not hang on his mood
     const en = g.livingEnemies[0];
     if (en && d !== 'passive') en.brain.cooldown = Math.min(en.brain.cooldown, 0.2);
@@ -216,6 +219,7 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   const e = dummy('ronin', V(0, 0, 2.6)); fresh(0, 4);
   const me = P.getPos();
   const { POSES } = await import('/src/combat.js');
+  g.settings.sideGuard = false;
   check('Deckung ohne Bedrohung: die gewohnte Stellung', ctl.blockPose(me) === POSES.block);
   e.attackPhase = 'wind'; e.atk = { name: 'kesaR' };
   const wp = e.weapon.worldPoint.bind(e.weapon);
@@ -225,8 +229,21 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   const left = ctl.blockPose(me).hand.x, mid = ctl.blockPose(me).hand.y;
   e.atk = { name: 'shomen' };
   const high = ctl.blockPose(me).hand.y;
+  check('Deckung ohne Seite (Einstellung aus) geht dem Hieb entgegen: links, rechts, über Kopf', right > 0 && left < 0 && high > mid + 0.1, [right, left, mid, high]);
+  // with a side: the blade meets the first cut by itself, then it stays until the mouse carries it across
+  g.settings.sideGuard = true; ctl.sideSet = false; e.atk = { name: 'kesaR' };
+  e.weapon.worldPoint = (l, out) => out.set(me.x + 0.8, 1.3, me.z - 1);
+  const first = ctl.blockPose(me).hand.x;
+  e.weapon.worldPoint = (l, out) => out.set(me.x - 0.8, 1.3, me.z - 1);
+  const stays = ctl.blockPose(me).hand.x;
   e.weapon.worldPoint = wp; e.attackPhase = null; e.atk = null;
-  check('Deckung geht dem Hieb entgegen: links, rechts, über Kopf', right > 0 && left < 0 && high > mid + 0.1, [right, left, mid, high]);
+  check('Deckung mit Seite: geht dem ersten Hieb entgegen und bleibt dann dort', first > 0 && stays > 0, [first, stays]);
+  g.input.rmb = true; g.input.rmbPressed = true; step(3); ctl.blockSide = 1; ctl.sideSet = true;
+  g.input.dx = -260; step(2);
+  const pulled = ctl.blockSide; const label = $('stance-label').textContent;
+  g.input.dx = 260; step(2);
+  check('Deckung mit Seite: Maus ziehen trägt die Klinge hinüber und zurück', pulled === -1 && ctl.blockSide === 1 && label === 'Deckung links', [pulled, ctl.blockSide, label]);
+  g.input.rmb = false; step(5);
   const k = g.spawnFighter(1, 'daimyo', V(5, 0, 0)); let meshes = 0, cast = 0;
   for (const n in k.parts) k.parts[n].traverse?.((o) => { if (o.isMesh) { meshes++; if (o.castShadow) cast++; } });
   check('Eine Figur kostet höchstens 45 Zeichenaufrufe (mit Schatten)', meshes > 10 && meshes + cast <= 45, [meshes, cast]);
@@ -284,5 +301,123 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   check('Schwung: aus dem Lauf härter, im Zurückweichen schwächer, im Stand unverändert', stand === 1 && run > 1.25 && run <= 1.3 && back < 0.85 && back >= 0.8, [stand, run, back]);
   e = dummy('ronin', V(0, 0, 2.6)); g.onSwing(e);
   check('Schwung: Gegner bekommen keinen Bonus', e.momentum === undefined);
+  g.composer.render = realRender;
+}
+
+// ---- guard with a side, parry chain, leading a cut past, thrust out of the guard
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel(); g.settings.sideGuard = true;
+  const foe = () => { const e = dummy('ronin', V(0, 0, 2.6)); if (e.weapon.def.key !== 'katana') e.setWeapon('katana'); fresh(0, 4); return e; };
+  const hit = (e, side, guardT) => {
+    P.guardT = guardT; P.deflectWindow = 0.3; ctl.blockSide = 1; ctl.flickX = 0; e.weapon.blockedUntil = 0; P.posture = 0; P.core.velocity.set(0, 0, 0);
+    const at = P.getHeadPos(); at.x += side * 0.3;          // yaw 0: the player's right is +x
+    g.guardHit(P, e, e.weapon, at, 8);
+    g.hitStopT = 0; g.slowT = 0; g.timeScale = 1;          // the freeze of the clash is not what is being looked at
+    return [P.posture, e.posture];
+  };
+  let e = foe(); const [okP, okE] = hit(e, 1, 0.05);
+  e = foe(); const [wrongP, wrongE] = hit(e, -1, 0.05);
+  e = foe(); const [plainP] = hit(e, 1, 1);
+  check('Deckung mit Seite: auf der richtigen Seite wird abgewehrt', okE > 0.1 && okP < 0.1, [okP, okE]);
+  check('Deckung mit Seite: auf der falschen Seite nur geblockt, und teurer', wrongE < okE * 0.5 && wrongP > plainP * 1.4, [wrongP, plainP, wrongE]);
+  g.settings.sideGuard = false; e = foe(); const [, offE] = hit(e, -1, 0.05); g.settings.sideGuard = true;
+  check('Deckung mit Seite lässt sich abschalten', Math.abs(offE - okE) < 0.02, [offE, okE]);
+
+  e = foe(); e.postureMax = 50;
+  hit(e, 1, 0.05); const c1 = ctl.chain;
+  ctl.guardPressT = 1; g.input.rmb = true; g.input.rmbPressed = true; step(1); const widened = P.deflectWindow; g.input.rmb = false; step(1);
+  hit(e, 1, 0.05); const c2 = ctl.chain; const brokenBefore = e.brokenT;
+  hit(e, 1, 0.05);
+  check('Parier-Kette: jede Abwehr in Folge zählt und weitet das nächste Fenster', c1 === 1 && c2 === 2 && widened > 0.3 * 1.15, [c1, c2, widened]);
+  check('Parier-Kette: die dritte Abwehr öffnet den Gegner', brokenBefore <= 0 && e.brokenT > 1.5 && ctl.chain === 0, [brokenBefore, e.brokenT, ctl.chain]);
+  e = foe(); hit(e, 1, 0.05); hit(e, 1, 1);
+  check('Parier-Kette: ein bloßer Block beendet sie', ctl.chain === 0);
+  e = foe(); hit(e, 1, 0.05); ctl.chainT = 0.01; step(3);
+  check('Parier-Kette: sie verfällt, wenn nichts mehr kommt', ctl.chain === 0);
+
+  e = foe(); g.input.rmb = true; g.input.rmbPressed = true; step(4);
+  P.guardT = 1; e.weapon.blockedUntil = 0; P.posture = 0; P.core.velocity.set(3, 0, 0);
+  g.guardHit(P, e, e.weapon, P.getHeadPos(), 8);
+  check('Seitlich aus der Linie gehen lenkt den Hieb ins Leere', P.posture === 0 && e.brain.recoilT >= 1 && ctl.counterT > 0.5, [P.posture, e.brain.recoilT, ctl.counterT]);
+  P.core.velocity.set(0, 0, 3); e.weapon.blockedUntil = 0; e.brain.recoilT = 0;
+  g.guardHit(P, e, e.weapon, P.getHeadPos(), 8);
+  check('… gerade zurückweichen nicht', P.posture > 0 && e.brain.recoilT === 0, [P.posture, e.brain.recoilT]);
+
+  e = foe(); g.input.rmb = true; g.input.rmbPressed = true; step(6);
+  g.input.lmbPressed = true; step(1);
+  const a = ctl.runner.a; step(3);
+  check('LMB in der Deckung: schneller Stoß, den die Deckung nicht abbricht', a?.name === 'tsuki' && a.fromGuard && ctl.runner.busy, [a?.name, a?.fromGuard, ctl.runner.phase]);
+  step(60);
+  check('… danach steht die Deckung wieder', ctl.mode === 'parry' && !ctl.runner.busy, ctl.mode);
+  g.input.rmb = false; step(5);
+  g.composer.render = realRender;
+}
+
+// ---- the blade springs back, a planted stance, the mouse guiding a cut, the three dodges
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel();
+  solo(null); fresh(0, 4);
+  g.input.lmbPressed = true; for (let f = 0; f < 60 && ctl.runner.phase !== 'strike'; f++) step(1);
+  const inStrike = ctl.runner.phase === 'strike', rec0 = ctl.runner.a.recoverDur;
+  const did = g.bounce(P, 0.7);
+  check('Klinge prallt ab: der Hieb endet sofort und braucht länger zurück', inStrike && did && ctl.runner.phase === 'recover' && ctl.runner.a.recoverDur > rec0 + 0.1 && !g.bounce(P, 0.7), [inStrike, did, ctl.runner.phase]);
+  step(80);
+  check('… und wer nicht zuschlägt, prallt nirgends ab', !g.bounce(P, 0.7) && !g.bounce(null));
+  let e = dummy('ronin', V(0, 0, 2.6)); e.brain.runner.start('kesaR', e.weapon.def, {}); e.brain.runner.a.phase = 'strike';
+  check('Auch Gegnerklingen prallen ab', g.bounce(e, 0.6) && e.brain.runner.phase === 'recover' && e.brain.recoilT > 0);
+
+  fresh(0, 4);
+  const planted = g.braces(P); P.core.velocity.set(3, 0, 0); const moving = g.braces(P); P.core.velocity.set(0, 0, 0); P.airborne = true; const air = g.braces(P); P.airborne = false;
+  check('Fester Stand fängt schwere Treffer ab, in Bewegung oder in der Luft nicht', planted && !moving && !air && !g.braces(e), [planted, moving, air]);
+
+  solo(null); fresh(0, 4); g.settings.aimCuts = true;
+  g.input.lmbPressed = true; step(2); g.input.dx = 120; step(1);
+  const bend1 = ctl.runner.a?.bend?.x; g.input.dx = 5000; step(1); const bend2 = ctl.runner.a?.bend?.x;
+  check('Maus im Hieb lenkt die Klinge, aber nur ein Stück weit', bend1 > 0.05 && bend2 <= 0.22 + 1e-9 && bend2 > bend1, [bend1, bend2]);
+  step(80);
+
+  e = dummy('ronin', V(0, 0, 1.5)); fresh(0, 4); ctl.lock = e;
+  const ang = () => Math.atan2(P.core.position.x - e.core.position.x, P.core.position.z - e.core.position.z), dist = () => Math.hypot(P.core.position.x - e.core.position.x, P.core.position.z - e.core.position.z);
+  const a0 = ang(), d0 = dist();
+  K.add('KeyD'); step(2); press('ShiftLeft'); step(1);
+  const kind = P.dodgeKind, piv = !!P.pivot; step(16); K.clear();
+  check('Seitlich mit erfasstem Ziel: der Schritt umkreist den Gegner', kind === 'pivot' && piv && Math.abs(ang() - a0) > 0.5 && Math.abs(dist() - d0) < 1.0, [kind, ang() - a0, dist() - d0]);
+  step(60); ctl.lock = null; fresh(0, 4);
+  K.add('KeyD'); step(2); press('ShiftLeft'); step(1); K.clear();
+  check('… ohne erfasstes Ziel ist es ein gerader Schritt', P.dodgeKind === 'step' && !P.pivot, P.dodgeKind);
+  step(60);
+  g.composer.render = realRender;
+}
+
+// ---- a body that moves like one: planted feet, hips, leaning, flinching
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel(); solo(null); fresh(0, 8);
+  K.add('KeyW'); step(50);
+  let planted = 0, frames = 0, lean = 0, last = null, lastBody = P.core.position.z;
+  for (let f = 0; f < 120; f++) {
+    step(1);
+    // the foot end of the right shin: where the sole is
+    const sole = P.parts.shinR.localToWorld(P.parts.shinR.worldToLocal(P.parts.shinR.position.clone()).set(0, -0.25, 0));
+    const body = P.core.position.z, moved = Math.abs(body - lastBody);
+    if (last !== null && moved > 0.02) { frames++; if (Math.abs(sole.z - last) < moved * 0.4) planted++; }
+    last = sole.z; lastBody = body; lean = Math.max(lean, Math.abs(P.accLean.y));
+  }
+  K.clear();
+  check('Füße stehen beim Gehen am Boden, statt zu rutschen', frames > 60 && planted / frames > 0.25, [planted, frames]);
+  step(60); fresh(0, 8);
+  K.add('KeyW'); let leanStart = 0; for (let f = 0; f < 20; f++) { step(1); leanStart = Math.max(leanStart, P.accLean.y); }
+  K.clear(); let leanStop = 0; for (let f = 0; f < 20; f++) { step(1); leanStop = Math.min(leanStop, P.accLean.y); }
+  check('Der Körper lehnt sich ins Anlaufen und beim Abbremsen zurück', leanStart > 0.02 && leanStop < -0.01, [leanStart, leanStop]);
+  step(40); fresh(0, 8); const e = dummy('ronin', V(0, 0, 2)); ctl.lock = e;
+  K.add('KeyD'); K.add('KeyW'); step(50); const hipDiag = P.hipYaw; K.clear(); step(80); const hipRest = P.hipYaw;
+  check('Die Hüfte dreht in die Laufrichtung, der Oberkörper bleibt am Gegner', Math.abs(hipDiag) > 0.08 && Math.abs(hipRest) < 0.03, [hipDiag, hipRest]);
+  const d = P.forward().clone().negate();
+  P.flinch('armR', d, 0.3); const fl = [P.flinchT, P.flinchP, P.armSag];
+  step(2); const sagging = P.armSag > 0; step(60);
+  check('Treffer zeigen sich am Körper und klingen wieder ab', fl[0] > 0.3 && Math.abs(fl[1]) > 0.1 && fl[2] > 0.4 && sagging && P.flinchT === 0 && P.armSag === 0 && sane() === '', fl);
+  ctl.lock = null;
   g.composer.render = realRender;
 }

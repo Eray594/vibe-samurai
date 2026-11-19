@@ -9,11 +9,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, diff: 'normal', lang: 'de' }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de' }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, diff: this.diff, lang: this.lang });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang });
     this.apply();
   }
   apply() {
@@ -107,6 +107,7 @@ export class Menu {
         <label class="chk"><input type="checkbox" id="set-standoff"> Duell-Eröffnung (ziehen, wenn der Gegner zuckt)</label>
         <label class="chk"><input type="checkbox" id="set-replay"> Wiederholung des Todesstoßes</label>
         <label class="chk"><input type="checkbox" id="set-aimCuts"> Hiebrichtung per Mausbewegung (Maus kurz ziehen, dann klicken)</label>
+        <label class="chk"><input type="checkbox" id="set-sideGuard"> Deckung mit Seite (Maus trägt die Klinge nach links oder rechts)</label>
         <h2>Dōjō <span id="shop-honor"></span></h2>
         <p class="hint">Ehre gibt es für jeden Besiegten und jede überstandene Welle. Was du hier nimmst, bleibt.</p>
         <div id="shop"></div>
@@ -124,7 +125,7 @@ export class Menu {
       show();
       inp.addEventListener('input', () => { S.set(key, +inp.value); show(); });
     }
-    for (const key of ['blood', 'standoff', 'replay', 'aimCuts']) {
+    for (const key of ['blood', 'standoff', 'replay', 'aimCuts', 'sideGuard']) {
       const inp = $('set-' + key);
       inp.checked = S[key];
       inp.addEventListener('change', () => S.set(key, inp.checked));

@@ -156,6 +156,8 @@ export class PlayerController {
     this.iaiReady = false;
     this.maxHeals = 3;
     this.fixedYaw = false;    // two-player duel: the camera is not ours to turn
+    this.chain = 0; this.chainT = 0;      // deflections in a row
+    this.lastDodgeAt = -9;
     this.flickX = 0;          // recent mouse travel: a flick just before the click aims the cut
     this.flickY = 0;
     this.stamina = 1;         // breath: cuts, steps, sprinting and jumps draw on it
@@ -219,11 +221,13 @@ export class PlayerController {
       const p = f.core.position, d = Math.hypot(p.x - me.x, p.z - me.z);
       if (d < bd) { bd = d; best = f; }
     }
-    if (!best) return POSES.block;
+    if (!best && !game.settings.sideGuard) return POSES.block;
+    if (!best) { const s0 = this.blockSide || 1, b0 = this.bp || (this.bp = { hand: new THREE.Vector3(), dir: new THREE.Vector3() }); b0.hand.set(0.1 * s0, 0.42, -0.4); b0.dir.set(-0.85 * s0, 0.5, -0.15).normalize(); return b0; }
     const w = best.weapon;
     const tip = w.worldPoint(w.tipLocal, _v).sub(me).applyQuaternion(_bq.copy(k.yawQuat()).invert());
-    if (Math.abs(tip.x) > 0.12) this.blockSide = tip.x > 0 ? 1 : -1;       // a little dead zone, so it does not flicker
-    const s = this.blockSide || 1, high = best.atk?.name === 'shomen';
+    // with a guard that has a side, the blade goes to meet the first cut by itself; after that the mouse moves it
+    if (!game.settings.sideGuard || !this.sideSet) { if (Math.abs(tip.x) > 0.12) { this.blockSide = tip.x > 0 ? 1 : -1; this.sideSet = true; } }
+    const s = this.blockSide || 1, high = best.atk?.name === 'shomen' && !game.settings.sideGuard;
     const bp = this.bp || (this.bp = { hand: new THREE.Vector3(), dir: new THREE.Vector3() });
     bp.hand.set(0.1 * s, high ? 0.6 : 0.42, -0.4);
     bp.dir.set(-0.85 * s, high ? 0.2 : 0.5, -0.15).normalize();
@@ -270,6 +274,7 @@ export class PlayerController {
     this.lock = null;
     this.buffer = 0;
     this.comboI = 0;
+    this.chain = 0; this.chainT = 0; this.lastDodgeAt = -9;
     this.heals = this.maxHeals;
     this.iaiCharge = 0;
     this.iaiCd = 0;
@@ -505,11 +510,34 @@ export class PlayerController {
     }
     if ((pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();
-      if (!this.exhausted && k.dash(d)) {
+      // a tap is a step; a second tap right after it turns it into a roll; sideways with a target locked circles round him
+      const again = game.time - this.lastDodgeAt < 0.36 && k.dodgeKind !== 'roll' && k.dashT > -0.2;
+      if (again) k.dashCd = 0;
+      let pivot = 0;
+      if (!again && moving && this.valid(this.lock)) {
+        const tp = this.lock.getPos(_q), tx = tp.x - me.x, tz = tp.z - me.z, td = Math.hypot(tx, tz) || 1;
+        const cross = (mx * tz - mz * tx) / td;
+        if (Math.abs(cross) > 0.75 && td < 6) pivot = cross > 0 ? 1 : -1;
+      }
+      if (!this.exhausted && k.dash(d, again ? 'roll' : 'step')) {
         if (this.runner.phase !== 'strike') this.runner.cancel();
         this.finisher = null;
-        this.spend(0.16);
+        this.spend(again ? 0.1 : 0.16);
+        this.lastDodgeAt = game.time;
+        k.pivot = pivot ? { tgt: this.lock, sign: pivot } : null;
+        if (pivot) k.dodgeKind = 'pivot';
         game.onDodge(k, d, this);
+      }
+    }
+    if (k.pivot) {
+      // circling: keep bending the dash round the target so it ends at his flank, still facing him
+      const pv = k.pivot;
+      if (k.dashT <= 0 || !this.valid(pv.tgt)) k.pivot = null;
+      else {
+        const tp = pv.tgt.getPos(_q), rx = me.x - tp.x, rz = me.z - tp.z, rd = Math.hypot(rx, rz) || 1;
+        const v = k.core.velocity, sp = Math.hypot(v.x, v.z);
+        const tx = (rz / rd) * pv.sign, tz = (-rx / rd) * pv.sign, pull = rd > 1.7 ? -0.25 : 0.15;
+        v.x = (tx + (rx / rd) * pull) * sp; v.z = (tz + (rz / rd) * pull) * sp;
       }
     }
     if (pressed.has('KeyX') && k.sprinting && !broken) {
@@ -523,9 +551,16 @@ export class PlayerController {
     const wantGuard = inp.rmb && armed && !broken && !this.finisher && !k.holding;
     if (frame.rmbPressed) {
       // mashing the guard shrinks the deflection window
-      k.deflectWindow = (this.guardPressT < 0.28 ? DEFLECT_WINDOW * 0.65 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1);
+      k.deflectWindow = (this.guardPressT < 0.28 ? DEFLECT_WINDOW * 0.65 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1) * (1 + 0.18 * Math.min(2, this.chainT > 0 ? this.chain : 0));
       this.guardPressT = 0;
     }
+    this.chainT -= dt;
+    if (this.chainT <= 0) this.chain = 0;
+    // the guard has a side: a pull of the mouse while it is up carries the blade across
+    if (wantGuard && game.settings.sideGuard) {
+      if (frame.rmbPressed) this.sideSet = false;
+      if (Math.abs(this.flickX) > 30) { const sd = this.flickX > 0 ? 1 : -1; if (sd !== this.blockSide) { this.blockSide = sd; game.audio.tick?.(); } this.sideSet = true; }
+    } else if (!wantGuard) this.sideSet = false;
     this.iaiCd -= dt;
     this.guardPressT += dt;
     this.counterT -= dt;
@@ -581,7 +616,7 @@ export class PlayerController {
       this.faceYaw = this.yaw;
     } else {
       // guard cancels everything but a blow already on its way
-      if (wantGuard && this.runner.busy && this.runner.phase !== 'strike') {
+      if (wantGuard && this.runner.busy && this.runner.phase !== 'strike' && !this.runner.a.fromGuard) {
         if (this.runner.phase === 'wind' && frame.rmbPressed) game.onFeint(k);      // a cut shown and taken back
         this.runner.cancel(); this.buffer = 0;
       }
@@ -597,6 +632,13 @@ export class PlayerController {
         this.iaiCharge = 0; this.iaiReady = false;
         if (c > 0.3 && !this.runner.busy && !wantGuard) this.startIai(c, mx, mz, moving);
       }
+      if (wantGuard && frame.lmbPressed && !this.runner.busy && k.kickT <= 0 && k.stuckT <= 0 && !this.exhausted) {
+        // out of the guard: a short, quick thrust, and the blade is back across the body right after
+        const a = this.runner.start(def.type === 'club' ? 'shomen' : 'tsuki', def, { wind: 0.09, strike: def.swing.strike * 0.8, recover: 0.16, power: 0.85 });
+        a.fromGuard = true; a.home = this.blockPose(me);
+        const f0 = k.forward(_v); this.aim = this.pickAim(f0.x, f0.z);
+        this.spend(0.07); this.buffer = 0;
+      }
       if (this.buffer > 0 && !wantGuard && k.kickT <= 0 && this.iaiCharge <= 0 && k.stuckT <= 0) {
         const a = this.runner.a;
         if (!a) this.startAttack(mx, mz, moving);
@@ -604,6 +646,11 @@ export class PlayerController {
       }
       if (this.runner.busy) {
         const a = this.runner.a;
+        if (game.settings.aimCuts && !this.fixedYaw && !a.thrust && !a.spin && a.phase !== 'recover') {
+          // the mouse guides the cut while it is under way
+          const bd = a.bend || (a.bend = new THREE.Vector2());
+          bd.x = clamp(bd.x + frame.dx * 0.0011, -0.22, 0.22); bd.y = clamp(bd.y - frame.dy * 0.0011, -0.2, 0.2);
+        }
         const ev = this.runner.update(dt, it, inp.lmb && !this.finisher && !this.sprintAttack);
         this.mode = a.charge > 0.05 && a.phase === 'wind' ? 'charge' : 'swing';
         this.comboT = 0;
