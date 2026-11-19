@@ -80,7 +80,10 @@ for (const file of suites) {
   const name = file.replace(/\.js$/, ''), ts = Date.now();
   console.log(`\n── ${name}`);
   errors = [];
-  const body = readFileSync(join(ROOT, 'tests/suites', file), 'utf8');
+  let body = readFileSync(join(ROOT, 'tests/suites', file), 'utf8');
+  // a line "// @body other.js" runs that suite's checks here too (the same checks on a page loaded differently)
+  const inc = body.match(/^\/\/ @body (.*)$/m);
+  if (inc) body += '\n' + readFileSync(join(ROOT, 'tests/suites', inc[1].trim()), 'utf8');
   // a first line "// @storage {...}" puts these values into localStorage before the game loads
   const pre = body.match(/^\/\/ @storage (.*)$/m);
   const up = await load(pre ? JSON.parse(pre[1]) : null);

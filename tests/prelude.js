@@ -29,6 +29,8 @@ const sane = () => {
   for (const k of g.fighters) {
     const p = k.state === 'active' ? k.core.position : k.parts.torso.position;
     if (![p.x, p.y, p.z].every(Number.isFinite)) return `${k.name}: Position ist keine Zahl`;
+    // on a map with an edge, whoever is out over it (or has fallen) may be anywhere below, down to where the fallen are left
+    if (g.arena.abyss && (k.fell || !g.arena.solidAt(p.x, p.z))) { if (p.y < -41 || p.y > 14 || Math.hypot(p.x, p.z) > 60) return `${k.name}: im Abgrund verloren (${p.x.toFixed(1)}, ${p.y.toFixed(1)}, ${p.z.toFixed(1)})`; continue; }
     if (Math.hypot(p.x, p.z) > 16.5) return `${k.name}: außerhalb des Hofs (${p.x.toFixed(1)}, ${p.z.toFixed(1)})`;
     if (p.y < -1.5 || p.y > 14) return `${k.name}: Höhe ${p.y.toFixed(1)}`;
     if (!Number.isFinite(k.posture)) return `${k.name}: Haltung ist keine Zahl`;

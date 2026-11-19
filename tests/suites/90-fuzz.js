@@ -5,7 +5,7 @@ const seed0 = Number(new URLSearchParams(location.search).get('seed')) || 12345;
 let seed = seed0;
 const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
 const HOLD = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ShiftLeft', 'KeyB'];
-const TAP = ['Space', 'KeyF', 'KeyG', 'KeyQ', 'KeyC', 'KeyX', 'KeyL', 'KeyV', 'Tab', 'KeyE', 'ShiftLeft', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7',
+const TAP = ['Space', 'KeyF', 'KeyG', 'KeyQ', 'KeyC', 'KeyX', 'KeyY', 'KeyL', 'KeyV', 'Tab', 'KeyE', 'ShiftLeft', 'Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7',
   'Digit8', 'Digit9', 'Digit0', 'KeyR', 'KeyT', 'KeyJ', 'Enter', 'KeyK', 'KeyU', 'KeyO', 'KeyH', 'KeyZ', 'KeyP', 'KeyN'];
 const baseBodies = (() => { play('duel'); step(10); return g.world.bodies.length; })();
 const baseScene = g.scene.children.length;

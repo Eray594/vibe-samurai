@@ -222,6 +222,18 @@ export const EN = {
 
   // ---- touch
   'Schritt': 'Dodge', 'Sprung': 'Jump', 'Tritt': 'Kick', 'Verband': 'Bandage',
+  // the second map, the bell, smoke
+  'Karte': 'Map', 'Dōjō-Hof': 'Dōjō yard', 'Wolkengipfel': 'Cloud Peak', 'Ummauerter Hof in der Abenddämmerung': 'A walled yard at dusk',
+  'Schrein auf dem Fels über den Wolken': 'A shrine on the rock above the clouds', 'wer über die Kante geht, fällt': 'whoever goes over the edge falls',
+  'Die Karte wird geladen …': 'Loading the map …', 'Morgen über den Wolken': 'Morning above the clouds',
+  'In den Abgrund!': 'Into the abyss!', 'In den Abgrund gestürzt': 'Fell into the abyss', 'Die Glocke dröhnt!': 'The bell booms!', 'Rauch!': 'Smoke!',
+  'Keine Rauchbomben mehr': 'No smoke bombs left', 'Überrascht!': 'Caught off guard!', 'Vorsicht, Kante!': 'Careful, the edge!', 'Rauch #': 'Smoke #',
+  'Tiefer Fall': 'A long way down', 'Stoße einen Gegner in den Abgrund': 'Knock an opponent into the abyss',
+  'Glockenschlag': 'Bell ringer', 'Bringe Gegner mit der Tempelglocke ins Wanken': 'Stagger opponents with the temple bell',
+  'Im Rauch verschwunden': 'Gone in the smoke', 'Zünde eine Rauchbombe': 'Set off a smoke bomb',
+  'Rauchbombe': 'Smoke bomb', '· wer nichts sieht, greift nicht an · ein Treffer auf Benommene:': '· who cannot see does not attack · a hit on a dazed opponent:', 'Haltung bricht': 'breaks his posture',
+  'Wolkengipfel: Gegner über die': 'Cloud Peak: knock opponents over the', 'offene Kante': 'open edge', 'stoßen · die': '· strike the', 'Glocke': 'bell',
+  'schlagen: alle in der Nähe taumeln': 'and everyone near it staggers',
 };
 
 /** Last resort for texts put together in ways not listed above: words that are safe to swap on their own. */

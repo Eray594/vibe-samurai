@@ -9,11 +9,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de' }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard' }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map });
     this.apply();
   }
   apply() {

@@ -15,12 +15,12 @@ import {
 } from './envkit.js';
 
 export const ARENA_R = 13.2;       // walkable radius
-const WALL_R = 14.8;
+export const WALL_R = 14.8;
 export const SUN_DIR = new THREE.Vector3(-0.38, 0.17, -1).normalize();
 
 // ------------------------------------------------------------------ procedural textures
 /** Rolled tatami: woven straw with binding cords. */
-function makeStraw() {
+export function makeStraw() {
   const W = 128, H = 512;
   const fib = fbmField(W, H, 2, 128, 2, 201), blot = fbmField(W, H, 4, 8, 3, 202);
   return bake(W, H, (x, y, o) => {
@@ -36,7 +36,7 @@ function makeStraw() {
 }
 
 /** A green bamboo culm: nodes every quarter of the picture. */
-function makeBamboo() {
+export function makeBamboo() {
   const W = 64, H = 256, str = fbmField(W, H, 16, 1, 2, 211);
   return bake(W, H, (x, y, o) => {
     const i = y * W + x, s = (y / H * 4) % 1, d = Math.min(s, 1 - s) * (H / 4);        // px to the nearest node
@@ -48,7 +48,7 @@ function makeBamboo() {
 }
 
 /** Moss and trodden grass for the ground beyond the wall. */
-function makeTurf() {
+export function makeTurf() {
   const S = 256, a = fbmField(S, S, 6, 6, 5, 221), b = fbmField(S, S, 64, 64, 2, 222);
   return bake(S, S, (x, y, o) => {
     const i = y * S + x, k = 0.6 + 0.5 * a[i] + 0.3 * (b[i] - 0.5), dry = sstep(0.55, 0.75, a[i]);
@@ -57,7 +57,7 @@ function makeTurf() {
 }
 
 /** Three unrelated smooth noises in one tileable picture: the ground shader reads its large patterns from it. */
-function makeNoise() {
+export function makeNoise() {
   const S = 256, a = fbmField(S, S, 4, 4, 5, 231), b = fbmField(S, S, 5, 5, 5, 232), c2 = fbmField(S, S, 7, 7, 4, 233);
   const c = document.createElement('canvas');
   c.width = c.height = S;
@@ -70,7 +70,7 @@ function makeNoise() {
 }
 
 /** Tall nobori banner with a simple crest (mon), on woven cloth. */
-function makeBannerTexture(color, crest) {
+export function makeBannerTexture(color, crest) {
   const c = document.createElement('canvas');
   c.width = 128; c.height = 512;
   const g = c.getContext('2d');
@@ -98,7 +98,7 @@ function makeBannerTexture(color, crest) {
   return t;
 }
 
-const SKY = {
+export const SKY = {
   uniforms: { sunDir: { value: SUN_DIR }, dim: { value: 1 }, sat: { value: 1 }, stars: { value: 0 }, time: { value: 0 } },
   vertexShader: `varying vec3 vDir; void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: `
@@ -157,7 +157,7 @@ const SKY = {
  * lines (straight, and in rings round the trees), large soft blotches, moss creeping in from
  * the wall, and in the rain a wet sheen with standing puddles.
  */
-function groundShader(mat, U) {
+export function groundShader(mat, U) {
   mat.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, U);
     sh.vertexShader = sh.vertexShader
@@ -210,7 +210,7 @@ function groundShader(mat, U) {
  * A beam along x with the given cross-section ([z, y] corners), lifted by `bend(x)`: the curved
  * lintels of the torii. Hard edges between the faces, as planed timber has.
  */
-function bentBar(profile, len, nseg, bend) {
+export function bentBar(profile, len, nseg, bend) {
   const pos = [], uv = [], idx = [], m = profile.length;
   let acc = 0;
   for (let k = 0; k < m; k++) {
@@ -241,7 +241,7 @@ function bentBar(profile, len, nseg, bend) {
  * A pagoda roof: four curved faces falling from a small square at the top to wide eaves, the
  * corners swept upwards. y = 0 is the top. With `under`, the same surface seen from below.
  */
-function hipRoof(eave, top, rise, lift, under = false, segs = 8, rows = 5) {
+export function hipRoof(eave, top, rise, lift, under = false, segs = 8, rows = 5) {
   const pos = [], uv = [], idx = [];
   for (let side = 0; side < 4; side++) {
     const base = pos.length / 3, ca = Math.cos(side * Math.PI / 2), sa = Math.sin(side * Math.PI / 2);
@@ -264,7 +264,7 @@ function hipRoof(eave, top, rise, lift, under = false, segs = 8, rows = 5) {
 }
 
 /** Rule for a cherry tree: a short trunk forking into arching limbs, each forking again down to twigs. */
-function growCherry(R, s, maxDepth, limbs, anchors) {
+export function growCherry(R, s, maxDepth, limbs, anchors) {
   const RADIAL = [12, 8, 6, 5, 4];
   const u = new THREE.Vector3(), v = new THREE.Vector3();
   const branch = (p0, dir, len, r0, depth) => {
@@ -305,7 +305,7 @@ function growCherry(R, s, maxDepth, limbs, anchors) {
 }
 
 /** One conifer, trunk and all, as a single geometry to be instanced: tiers of drooping boughs on cut-out cards round a dark core. */
-function coniferGeo(R) {
+export function coniferGeo(R) {
   const pos = [], nor = [], uv = [], col = [], idx = [];
   const H = 9, Y0 = 1.9, TIERS = 13;
   const bough = (y, a, L, f) => {
@@ -361,7 +361,7 @@ function coniferGeo(R) {
 }
 
 /** A few upright cards crossed at the root (grass), or hanging from it (leaf sprays). */
-function cardsGeo(n, hang) {
+export function cardsGeo(n, hang) {
   const pos = [], nor = [], uv = [], col = [], idx = [];
   for (let k = 0; k < n; k++) {
     const a = (k / n) * Math.PI, sa = Math.sin(a), ca = Math.cos(a), base = pos.length / 3;
@@ -383,7 +383,7 @@ function cardsGeo(n, hang) {
 }
 
 const _m4 = new THREE.Matrix4(), _q4 = new THREE.Quaternion(), _e4 = new THREE.Euler(), _p4 = new THREE.Vector3(), _s4 = new THREE.Vector3();
-const place = (im, i, x, y, z, rx, ry, rz, sx, sy = sx, sz = sx) => im.setMatrixAt(i, _m4.compose(_p4.set(x, y, z), _q4.setFromEuler(_e4.set(rx, ry, rz)), _s4.set(sx, sy, sz)));
+export const place = (im, i, x, y, z, rx, ry, rz, sx, sy = sx, sz = sx) => im.setMatrixAt(i, _m4.compose(_p4.set(x, y, z), _q4.setFromEuler(_e4.set(rx, ry, rz)), _s4.set(sx, sy, sz)));
 /** The torii must stay in view from the yard: nothing tall straight behind it. */
 const inToriiGap = (a) => Math.abs(Math.sin(a)) < 0.33 && Math.cos(a) < 0;
 
@@ -400,19 +400,14 @@ export class Arena {
     this.obstacles = [];     // [x, z, radius] the camera should stay out of
     this.time = 0;
 
-    scene.background = new THREE.Color(0x1a1420);
-    scene.fog = new THREE.FogExp2(0x6a4250, 0.012);
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(230, 32, 16), new THREE.ShaderMaterial({ ...SKY, side: THREE.BackSide, depthWrite: false, fog: false }));
-    sky.renderOrder = -10;
-    scene.add(sky);
-    this.sky = sky;
+    this.buildSky(scene);
 
     // ---- lights: low sun, cool sky fill
     this.hemi = new THREE.HemisphereLight(0x8c7fb0, 0x4a3628, 1.0);
     scene.add(this.hemi);
 
     const sun = new THREE.DirectionalLight(0xffa56a, 2.1);
-    sun.position.copy(SUN_DIR).multiplyScalar(45);
+    sun.position.copy(this.sunDir).multiplyScalar(45);
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera;
@@ -455,32 +450,6 @@ export class Arena {
     const sh = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
     this.sh = sh;
 
-    // ---- ground
-    this.groundU = { uNoise: { value: makeNoise() }, uRing: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(99, 99, 0)) }, uTime: { value: 0 } };
-    groundShader(M.floor, this.groundU);
-    const ground = new THREE.Mesh(new THREE.CircleGeometry(WALL_R + 0.3, 64).rotateX(-Math.PI / 2), M.floor);
-    ground.receiveShadow = true;
-    scene.add(ground);
-    const outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500).rotateX(-Math.PI / 2), M.grass);
-    outer.position.y = -0.03;
-    outer.receiveShadow = true;
-    scene.add(outer);
-    const gb = new CANNON.Body({ mass: 0, material: materials.ground });
-    gb.addShape(new CANNON.Plane());
-    gb.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
-    gb.hs = { type: 'static', kind: 'stone' };
-    setGroup(gb, 'STATIC');
-    world.addBody(gb);
-    // stepping stones from the rack to the middle: worn slabs sunk into the gravel
-    const R = rng(7), slabs = [];
-    for (let i = 0; i < 12; i++) {
-      const r = R.range(0.44, 0.62);
-      slabs.push(put(rockGeo(300 + i, 2), Math.sin(i * 1.7) * 0.28, 0.002, -10.6 + i * 1.25, 0, R.range(0, 6), 0, r, 0.036, r * R.range(0.78, 0.95)));
-    }
-    const stones = new THREE.Mesh(mergeGeos(slabs), M.stone);
-    stones.receiveShadow = true;
-    scene.add(stones);
-
     const staticBox = this.staticBox = (w, h, d, x, y, z, rotY, kind) => {
       const b = new CANNON.Body({ mass: 0, material: kind === 'wood' ? materials.wood : materials.ground });
       b.addShape(new CANNON.Box(new CANNON.Vec3(w / 2, h / 2, d / 2)));
@@ -492,6 +461,7 @@ export class Arena {
       return b;
     };
 
+    this.buildGround(scene, world);
     this.buildWall(scene, staticBox);
     this.buildScenery(scene);
     this.buildTrees(scene, staticBox);
@@ -501,7 +471,72 @@ export class Arena {
     this.buildPetals(scene);
     this.buildFireflies(scene);
     this.buildMats(scene);
+    this.buildExtras(scene, staticBox);
     this.breakables = new Breakables(game, this);
+  }
+
+  // ---------------------------------------------------------------- what a map is asked
+  /** Is there ground under this point? (Always, in the yard; another map may have an edge to fall off.) */
+  solidAt() { return true; }
+  /** Is the rim open here, with nothing to stop a body? */
+  openAt() { return false; }
+  /** Is this point close to an edge with nothing to stop a body? */
+  nearEdge() { return false; }
+  /** Weather presets this map changes (see world.js), by weather key. */
+  get looks() { return null; }
+  /** Where the light comes from. */
+  get sunDir() { return SUN_DIR; }
+  /** Where the straw mats and the green bamboo stand: { straw: [[x, z]], bamboo: [[x, z]] }. */
+  matSpots() {
+    return { straw: [[-8.3, -6.1], [-6.7, -8.0], [-9.4, -3.9], [8.4, -6.0]], bamboo: [[7.2, 7.4], [7.7, 7.9], [8.2, 7.3], [-4.6, -10.9], [-3.9, -11.3], [-5.3, -11.1]] };
+  }
+  /** Anything a map has that the yard does not. */
+  buildExtras() {}
+  /** Once per physics step, before the world moves. */
+  step() {}
+
+  // ---------------------------------------------------------------- sky
+  buildSky(scene) {
+    scene.background = new THREE.Color(0x1a1420);
+    scene.fog = new THREE.FogExp2(0x6a4250, 0.012);
+    const sky = new THREE.Mesh(new THREE.SphereGeometry(230, 32, 16), new THREE.ShaderMaterial({ ...SKY, side: THREE.BackSide, depthWrite: false, fog: false }));
+    sky.renderOrder = -10;
+    scene.add(sky);
+    this.sky = sky;
+  }
+
+  // ---------------------------------------------------------------- ground
+  buildGround(scene, world) {
+    this.groundU = { uNoise: { value: makeNoise() }, uRing: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(99, 99, 0)) }, uTime: { value: 0 } };
+    groundShader(this.M.floor, this.groundU);
+    const ground = new THREE.Mesh(new THREE.CircleGeometry(WALL_R + 0.3, 64).rotateX(-Math.PI / 2), this.M.floor);
+    ground.receiveShadow = true;
+    scene.add(ground);
+    const outer = new THREE.Mesh(new THREE.PlaneGeometry(500, 500).rotateX(-Math.PI / 2), this.M.grass);
+    outer.position.y = -0.03;
+    outer.receiveShadow = true;
+    scene.add(outer);
+    this.addGroundPlane(world);
+    // stepping stones from the rack to the middle: worn slabs sunk into the gravel
+    const R = rng(7), slabs = [];
+    for (let i = 0; i < 12; i++) {
+      const r = R.range(0.44, 0.62);
+      slabs.push(put(rockGeo(300 + i, 2), Math.sin(i * 1.7) * 0.28, 0.002, -10.6 + i * 1.25, 0, R.range(0, 6), 0, r, 0.036, r * R.range(0.78, 0.95)));
+    }
+    const stones = new THREE.Mesh(mergeGeos(slabs), this.M.stone);
+    stones.receiveShadow = true;
+    scene.add(stones);
+  }
+
+  /** The physical ground: one endless plane at height 0. */
+  addGroundPlane(world) {
+    const gb = new CANNON.Body({ mass: 0, material: materials.ground });
+    gb.addShape(new CANNON.Plane());
+    gb.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+    gb.hs = { type: 'static', kind: 'stone' };
+    setGroup(gb, 'STATIC');
+    world.addBody(gb);
+    return (this.groundBody = gb);
   }
 
   // ---------------------------------------------------------------- wall
@@ -983,7 +1018,8 @@ export class Arena {
     const M = this.M, sh = this.sh;
     this.matGeo = new THREE.CylinderGeometry(0.095, 0.095, 1, 18);
     const stands = [];
-    for (const [x, z] of [[-8.3, -6.1], [-6.7, -8.0], [-9.4, -3.9], [8.4, -6.0]]) {
+    const spots = this.matSpots();
+    for (const [x, z] of spots.straw) {
       for (const r of [0, Math.PI / 2]) stands.push(put(turnUV(rbox(0.7, 0.07, 0.1, 0.012, 1)), x, 0.035, z, 0, r, 0));
       stands.push(put(new THREE.CylinderGeometry(0.035, 0.045, 0.5, 10), x, 0.25, z));
       const mesh = sh(new THREE.Mesh(this.matGeo, M.straw));
@@ -994,7 +1030,7 @@ export class Arena {
     }
     scene.add(sh(new THREE.Mesh(mergeGeos(stands), M.darkWood)));
     // green bamboo: cut it wherever you like, as often as you like
-    for (const [x, z] of [[7.2, 7.4], [7.7, 7.9], [8.2, 7.3], [-4.6, -10.9], [-3.9, -11.3], [-5.3, -11.1]]) {
+    for (const [x, z] of spots.bamboo) {
       const mesh = sh(new THREE.Mesh(this.matGeo, M.bamboo));
       scene.add(mesh);
       const top = rand(2.2, 2.9);
@@ -1069,10 +1105,10 @@ export class Arena {
     this.breakables.update();
     // wind and light for the foliage, drifting clouds, ripples in the puddles
     foliageUniforms.uTime.value = t;
-    foliageUniforms.uSunDir.value.copy(SUN_DIR);
+    foliageUniforms.uSunDir.value.copy(this.sunDir);
     foliageUniforms.uSunCol.value.copy(this.sunLight.color).multiplyScalar(this.sunLight.intensity * 0.42);
     this.sky.material.uniforms.time.value = t;
-    this.groundU.uTime.value = t;
+    if (this.groundU) this.groundU.uTime.value = t;
     for (const b of this.banners) {
       b.pivot.rotation.y = b.base + Math.sin(t * 0.9 + b.phase) * 0.22 + Math.sin(t * 2.3 + b.phase) * 0.06;
       b.pivot.rotation.x = Math.sin(t * 1.4 + b.phase) * 0.03;

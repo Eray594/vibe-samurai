@@ -65,6 +65,15 @@ export class Brain {
     this.runner.bdir.copy(POSES.recoil.dir);
   }
 
+  /** Loses the thread for a moment (a bell rung beside him, smoke in his face): no target, no attack, no guard. */
+  dazed(t) {
+    this.dazeT = Math.max(this.dazeT || 0, t);
+    this.runner.cancel();
+    this.comboLeft = 0;
+    this.blockT = 0;
+    this.cooldown = Math.max(this.cooldown, t * 0.6);
+  }
+
   onHit(sev = 0.2) {
     // pain interrupts the wind-up; serious wounds make them back off
     if (sev > 0.25) this.recoilT = Math.max(this.recoilT, 0.4 + sev);
@@ -150,7 +159,12 @@ export class Brain {
       this.target = this.pickTarget();
       this.targetT = 0.7;
     }
-    const tgt = this.target;
+    // dazed, or smoke between them: he has nobody to fight for the moment
+    this.dazeT = Math.max(0, (this.dazeT || 0) - dt);
+    const lost = this.dazeT > 0 || (!!this.target && game.smokeHides(k, this.target));
+    if (lost && !this.wasLost) { this.runner.cancel(); this.comboLeft = 0; this.blockT = 0; }
+    this.wasLost = lost;
+    const tgt = lost ? null : this.target;
     const def = k.weapon.def;
     const me = k.getPos(_me);
     const inj = k.inj;
@@ -184,7 +198,10 @@ export class Brain {
     // ---------- disarmed: go and pick the weapon back up
     if (!this.fleeRolled && (k.armless || vit < 0.28)) { this.fleeRolled = true; this.flee = k.armless || Math.random() < 0.5; }
     const afraid = this.flee || this.fearT > 0;
-    if (!k.weapon.attached && !k.armless) {
+    // (a weapon that went over the edge is gone: nothing to fetch, he can only keep his distance)
+    const gone = !k.weapon.attached && k.weapon.body.position.y < -3;
+    if (gone) this.flee = true;
+    if (!k.weapon.attached && !k.armless && !gone) {
       const wp = k.weapon.body.position;
       const wx = wp.x - me.x, wz = wp.z - me.z, wd = Math.hypot(wx, wz);
       it.yaw = angleLerp(it.yaw, Math.atan2(-wx, -wz), dampFactor(4, dt));
@@ -210,6 +227,13 @@ export class Brain {
           this.steer((hx / hd) * sp, (hz / hd) * sp, me, home);
           it.yaw = angleLerp(it.yaw, Math.atan2(-it.move.x, -it.move.z), dampFactor(5, dt));
         }
+      }
+      if (lost && k.mountH <= 0) {
+        // peering about, a wary half step this way and that
+        const t = game.time * 1.7 + k.life.seed * 9;
+        it.yaw += Math.sin(t) * 1.5 * dt;
+        it.move.set(Math.sin(t * 0.7) * 0.5, 0, Math.cos(t * 0.9) * 0.5);
+        this.cooldown = Math.max(this.cooldown, 0.35);
       }
       if (this.runner.busy) this.runner.update(dt, it);
       else { it.mode = 'guard'; this.runner.rest(dt, it, guardFor(def)); }
@@ -290,8 +314,10 @@ export class Brain {
     const canAttack = this.blockT <= 0 && this.recoilT <= 0 && k.staggerT <= 0 && k.kickT <= 0 && k.weapon.attached;
     // a kick: to break open a turtle, or just to make room
     this.kickCd -= dt;
-    if (!this.runner.busy && canAttack && this.kickCd <= 0 && dist < 1.55 && (tgt.guardT > 0.7 || Math.random() < dt * 0.3)) {
-      if (k.startKick(1)) this.kickCd = rand(4, 8);
+    // (an opponent with his back to an open edge is asking for it)
+    const brink = !!game.arena.abyss && game.arena.nearEdge(tp.x, tp.z);
+    if (!this.runner.busy && canAttack && this.kickCd <= 0 && dist < 1.55 && (tgt.guardT > 0.7 || Math.random() < dt * (brink ? 2.4 : 0.3))) {
+      if (k.startKick(1)) this.kickCd = brink ? rand(2.5, 4.5) : rand(4, 8);
     }
     if (!this.runner.busy && canAttack && this.cooldown <= 0 && dist < ideal + 0.5 && !(afraid && dist > ideal) && this.fearT <= 0
         && Math.random() < 0.3 + 0.7 * vit && game.attackTokens(k.team) < game.maxTokens(k.team)) {

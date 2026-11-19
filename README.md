@@ -58,6 +58,28 @@ und Safari nutzen dieselben Web-Standards).
 | **Freies Spiel** | Der Hof als Sandkasten: Duell, Gefecht, Chaos, 2 Spieler, Training (`M` wechselt). Gegner und Verbündete lassen sich frei rufen. |
 | **Einführung** | Die geführte erste Runde. |
 
+## Karten
+
+Im Hauptmenü steht die **Karte** zur Wahl (das Spiel lädt dafür kurz neu):
+
+| Karte | Was sie ausmacht |
+|---|---|
+| **Dōjō-Hof** | Der ummauerte Hof in der Abenddämmerung. Rundum Mauer: niemand geht verloren. |
+| **Wolkengipfel** | Ein Schrein auf einem Fels über den Wolken, im Morgenlicht. Ein niedriger Zaun läuft um den Rand – an **drei Stellen fehlt er**. |
+
+Auf dem Wolkengipfel gilt:
+
+- **Der Abgrund.** Wer über eine offene Kante geht (oder über den Zaun fliegt), ist verloren – Gegner wie
+  du selbst. Tritt (`F`), Wurf (`G`) und jeder Niederschlag in Richtung Kante werden damit tödlich.
+  Gegner laufen nicht von selbst hinaus, treten aber gern zu, wenn *du* mit dem Rücken zur Kante stehst;
+  die Deckung (RMB) fängt den Tritt. Im freien Spiel stehst du nach ein paar Sekunden wieder oben, in
+  einem Lauf ist er vorbei.
+- **Die Glocke.** Ein harter Hieb auf die Bronzeglocke lässt alle Gegner im Umkreis taumeln und kostet
+  sie viel Haltung; sie sind kurz benommen. Danach braucht sie zehn Sekunden.
+- **Der Fels** zum Klettern steht dort, wo im Hof das Podest steht: für Sturzangriffe.
+
+Alle Modi laufen auf beiden Karten.
+
 Im Hauptmenü stehen außerdem die **Rekorde** auf den Karten, die **Schwierigkeit** (Leicht: Gegner
 treffen schwächer und greifen einzeln an, weniger Ehre · Schwer: umgekehrt, mehr Ehre) und die
 **Sprache** (Deutsch / English, wird sofort umgestellt).
@@ -93,7 +115,7 @@ Die Festung steht im bestehenden Hof; die Hofmauer drumherum bleibt.
 
 ### Erfolge
 
-21 Ziele (z. B. „10 Wellen in der Verteidigung“, „einen Pfeil aus der Luft schlagen“) geben einmalig
+24 Ziele (z. B. „10 Wellen in der Verteidigung“, „einen Pfeil aus der Luft schlagen“) geben einmalig
 Ehre. Stand und Liste stehen im Dōjō (`I`).
 
 ### Handy und Tablet
@@ -130,6 +152,8 @@ Die vollständige Tastenbelegung:
 | LMB hämmern bei Klingenbindung | Treffen sich zwei Hiebe, verhaken die Klingen – wer stärker drückt, gewinnt |
 | Tab / mittlere Maustaste | Ziel erfassen · Mausrad: Ziel wechseln |
 | Q · C · E | Kunai werfen · Wunden versorgen (3 Verbände) · Waffe aufheben / vom Ständer nehmen |
+| Y | **Rauchbombe** (2, eine kommt nach jeder Welle zurück): wer im Rauch steht oder hineinsieht, verliert sein Ziel und greift nicht an – nur wer dir auf Armlänge nah ist, sieht dich noch |
+| Hieb auf einen Benommenen | **Überrascht**: der erste Treffer auf einen Gegner, der dich nicht sieht (Rauch, Glocke), bricht seine Haltung |
 | V | „Freie Klinge": LMB halten und die Maus führt das Schwert direkt |
 | 1–6 | Katana · Wakizashi · Nōdachi · Yari · Naginata · Kanabō |
 | K | Skin: Rōnin · Samurai · Weißer Kranich · Schatten · Oni |
@@ -265,7 +289,7 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 ## Tests
 
 ```bash
-node tests/run.mjs                # alles (rund 3 Minuten)
+node tests/run.mjs                # alles (rund 6 Minuten)
 node tests/run.mjs defense fuzz   # nur Suiten, deren Name eines dieser Wörter enthält
 node tests/run.mjs --list         # welche Suiten es gibt
 SEED=7 node tests/run.mjs fuzz    # Zufallstest mit anderem Startwert
@@ -283,7 +307,10 @@ Hand an. Jede Suite (`tests/suites/*.js`) läuft auf einer frisch geladenen Seit
 | `40-goals` | Erfolge, Tagesaufgabe, Einführung |
 | `50-language-touch` | Englisch (auch: nirgends bleibt deutscher Text stehen), Touch-Steuerung |
 | `51-english-start` | Gespeicherte Sprache, Schwierigkeit und Rekorde beim Laden |
+| `60-cliff` | Die Karte Wolkengipfel: Zaun und offene Kanten, Absturz, Glocke, Fels, alle Modi, Kartenwahl im Hauptmenü |
 | `90-fuzz` | Zufallseingaben in jedem Modus: keine Ausnahme, niemand verlässt den Hof, keine NaN, nichts bleibt zurück |
+
+`91-fuzz-cliff` lässt dieselben Zufallseingaben auf dem Wolkengipfel laufen.
 
 Jede Suite schlägt außerdem fehl, wenn in der Browser-Konsole ein Fehler erscheint. Braucht Node 22+
 und Chrome, sonst nichts. Dieselben Tests laufen bei jedem Push auf GitHub
@@ -302,7 +329,8 @@ und Chrome, sonst nichts. Dieselben Tests laufen bei jedem Push auf GitHub
 | `roster.js` | Skins des Spielers und Gegnertypen (Waffen, Können, Haltung, Aussehen) |
 | `weapons.js` | Waffen-Definitionen (Masse, PD-Gains, Schaden), Modelle, PD-Antrieb |
 | `injury.js` | Verletzungsmodell (Wunden, Rüstung, Blutung, Bewusstsein) |
-| `arena.js` | Der Hof: Mauer, Torii, Pagode, Kirschbäume, Blütenblätter, Strohmatten, Bambus |
+| `arena.js` | Die Karte Dōjō-Hof (und was jede Karte kann): Mauer, Torii, Pagode, Kirschbäume, Blütenblätter, Strohmatten, Bambus |
+| `maps.js` / `cliff.js` / `cliffscape.js` | Die Karten · Wolkengipfel: Kanten, Zaun, Glocke, Fels, was über die Kante fällt · wie er aussieht |
 | `breakables.js` | Zerstörbare Objekte: Kisten, Fässer, Krüge, Papierwände, Steinlaternen |
 | `effects.js` / `audio.js` | Blut, Funken, Decals / prozeduraler Web-Audio-Sound (Stahl, Taiko, Koto) |
 | `world.js` | Wetter und Tageszeit, Feuer, das Podest zum Klettern |

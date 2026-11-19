@@ -144,6 +144,7 @@ for (let i = 0; i < 7; i++) {
   for (let f = 0; f < 600 || (f < 1500 && !names.size && d !== 'passive' && d !== 'arrow'); f++) {
     // the partner is kept eager, so that whether he attacks within the time does not hang on his mood
     const en = g.livingEnemies[0];
+    if (P.state !== 'active' && f % 120 === 0) fresh();      // down for long: nobody attacks a man on the ground
     if (en && d !== 'passive') en.brain.cooldown = Math.min(en.brain.cooldown, 0.2);
     g.frame();
     const a = g.livingEnemies[0]?.brain.runner.a;
@@ -361,8 +362,9 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   g.composer.render = () => {};
   g.setMode('duel'); g.standoff.cancel();
   solo(null); fresh(0, 4);
-  g.input.lmbPressed = true; for (let f = 0; f < 60 && ctl.runner.phase !== 'strike'; f++) step(1);
-  const inStrike = ctl.runner.phase === 'strike', rec0 = ctl.runner.a.recoverDur;
+  // (a click can be lost to whatever the test before left behind: try again on fresh feet)
+  for (let n = 0; n < 3 && ctl.runner.phase !== 'strike'; n++) { if (n) fresh(0, 4); g.input.lmbPressed = true; for (let f = 0; f < 60 && ctl.runner.phase !== 'strike'; f++) step(1); }
+  const inStrike = ctl.runner.phase === 'strike', rec0 = ctl.runner.a?.recoverDur ?? 0;
   const did = g.bounce(P, 0.7);
   check('Klinge prallt ab: der Hieb endet sofort und braucht länger zurück', inStrike && did && ctl.runner.phase === 'recover' && ctl.runner.a.recoverDur > rec0 + 0.1 && !g.bounce(P, 0.7), [inStrike, did, ctl.runner.phase]);
   step(80);
@@ -517,6 +519,33 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   P.goRagdoll(null, null, false); const flat = P.parts.torso.scale.x;
   step(30); fresh(0, 8); step(30);
   check('Am Boden und nach dem Aufstehen bleibt die Figur heil', flat === 1 && P.state === 'active' && sane() === '' && Object.values(P.parts).every((o) => [o.position.x, o.position.y, o.position.z, o.quaternion.w].every(Number.isFinite)), flat);
+  // a smoke bomb: whoever is in it or looks into it has nobody to fight for a few seconds
+  {
+    fresh(0, 8); const e = solo('ronin', V(0, 0, 3.5)); step(40);
+    const had = !!e.brain.target && !e.brain.wasLost;
+    press('KeyY'); step(30);
+    let struck = false;
+    for (let f = 0; f < 240; f++) { step(1); if (e.attackPhase === 'wind' || e.attackPhase === 'strike') struck = true; }
+    check('Rauchbombe: der Gegner verliert sein Ziel und greift nicht an', had && ctl.smokes === 1 && g.smokes.length === 1 && e.brain.wasLost && !struck && g.inSmoke(0, 8) && !g.inSmoke(9, 0) && sane() === '', [had, ctl.smokes, g.smokes.length, e.brain.wasLost, struck]);
+    step(60 * 5);
+    check('… der Rauch verzieht sich, dann sieht er wieder', g.smokes.length === 0 && !e.brain.wasLost && sane() === '', [g.smokes.length, e.brain.wasLost]);
+    const second = g.throwSmoke(P), third = g.throwSmoke(P);
+    check('… mehr als zwei Rauchbomben gibt es nicht', second === true && third === false && ctl.smokes === 0 && g.smokes.length === 1, [second, third, ctl.smokes, g.smokes.length]);
+    { g.smokes.length = 0; fresh(0, 8); const z = solo('ronin', V(0, 0, 4)); step(10); z.brain.blockT = 0.8; z.brain.dazed(1); P.iframeT = 1; step(2);
+      check('… benommen hebt er auch die Deckung nicht', z.brain.dazeT > 0.5 && z.brain.blockT === 0 && z.brain.wasLost, [z.state, z.brain.dazeT, z.brain.blockT, z.brain.wasLost]); }
+    // and the first cut that lands on a man who does not see it coming breaks his guard
+    { const said = []; const co = g.callout.bind(g); g.callout = (t, ...r) => { said.push(t); return co(t, ...r); };
+      fresh(0, 8); const d = solo('samurai', V(0, 0, 6.6)); step(20); d.brain.dazed(6); step(2);
+      let broke = false;
+      for (let n = 0; n < 5 && !broke; n++) { g.input.lmbPressed = true; g.input.lmb = true; step(2); g.input.lmb = false; for (let f = 0; f < 60 && !broke; f++) { step(1); broke = d.brokenT > 0 || d.dead || d.state !== 'active'; } }
+      g.callout = co;
+      check('… ein Treffer auf einen Benommenen bricht seine Haltung', broke && (said.includes('ÜBERRASCHT!') || d.dead) && sane() === '', [broke, d.dead, said.slice(-6)]);   // (a first cut that kills outright needs no surprise)
+    }
+    g.resetArena(); step(5);
+    g.throwSmoke(P); g.resetArena(); step(5);
+    check('… ein Neustart räumt den Rauch weg und füllt die Bomben auf', g.smokes.length === 0 && ctl.smokes === 2, [g.smokes.length, ctl.smokes]);
+    solo(null); fresh(0, 8);
+  }
   // sound: every call is harmless whatever state the audio context is in, and the one-shots stay capped
   {
     const a = g.audio; let err = '';

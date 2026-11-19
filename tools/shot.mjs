@@ -1,5 +1,6 @@
 // Takes pictures of the running game in headless Chrome, to look at models, poses and effects (the 3D view only, no HUD).
 //   node tools/shot.mjs out.png "<js run in the page before the picture>"  [more out.png "<js>" pairs]
+//   MAP=cliff node tools/shot.mjs ...   the same on another map (see src/maps.js)
 // The snippet has the test prelude (g, P, ctl, step, fresh, dummy, solo, V, K, press ...) and `view(x,y,z, tx,ty,tz)`,
 // which puts the camera somewhere and keeps it there. The game loop is stepped by hand, as in the tests.
 import { spawn } from 'node:child_process';
@@ -32,7 +33,7 @@ ws.addEventListener('message', (m) => {
 const send = (method, params = {}) => new Promise((r) => { const i = ++id; waits.set(i, r); ws.send(JSON.stringify({ id: i, method, params })); });
 const evaluate = async (expression) => (await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }));
 await send('Runtime.enable'); await send('Page.enable');
-await send('Page.navigate', { url: `http://127.0.0.1:${port}/index.html` });
+await send('Page.navigate', { url: `http://127.0.0.1:${port}/index.html${process.env.MAP ? '?map=' + process.env.MAP : ''}` });
 for (let i = 0; i < 120; i++) { await sleep(200); if ((await evaluate('!!(window.game && window.game.player && window.game.front)')).result?.result?.value === true) break; }
 const prelude = readFileSync(join(ROOT, 'tests/prelude.js'), 'utf8').replace('const checks = window.__checks = [];', 'const checks = [];')
   // (every picture runs the prelude again: keep hold of the one real render function)

@@ -11,6 +11,8 @@ import { Samurai } from './samurai.js';
 import { ZONE_NAMES } from './injury.js';
 import { WEAPONS, WEAPON_ORDER, Weapon } from './weapons.js';
 import { Arena, ARENA_R } from './arena.js';
+import { CliffArena } from './cliffscape.js';
+import { chosenMap } from './maps.js';
 import { Effects } from './effects.js';
 import { AudioFX } from './audio.js';
 import { Brain } from './ai.js';
@@ -42,7 +44,7 @@ const MODES = {
 const MODE_ORDER = ['duel', 'skirmish', 'chaos', 'versus', 'training'];
 const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危', 'heavy'], arrow: ['弓', 'arrow'], gun: ['危', 'heavy'] };
 // what the fighter himself does (as opposed to keys that switch things, which act at once and only once)
-const FIGHT_KEYS = new Set(['Space', 'ShiftLeft', 'ShiftRight', 'KeyF', 'KeyG', 'KeyQ', 'KeyC', 'KeyX', 'Tab', 'KeyL', 'KeyV', 'KeyW', 'KeyS']);
+const FIGHT_KEYS = new Set(['Space', 'ShiftLeft', 'ShiftRight', 'KeyF', 'KeyG', 'KeyQ', 'KeyC', 'KeyX', 'KeyY', 'Tab', 'KeyL', 'KeyV', 'KeyW', 'KeyS']);
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
 const ZONE_KNOCK = { head: 1.25, torso: 1.0, armR: 0.5, armL: 0.5, legR: 0.6, legL: 0.6 };
@@ -110,8 +112,11 @@ class Game {
     this.training = new Training(this);
     this.ach = new Achievements(this);
     this.tutorial = new Tutorial(this);
-    this.arena = new Arena(this);
-    this.platforms = buildPlatforms(this);
+    this.map = chosenMap(this.settings);
+    this.arena = this.map === 'cliff' ? new CliffArena(this) : new Arena(this);
+    this.platforms = this.arena.buildPlatforms?.() ?? buildPlatforms(this);
+    this.effects.solidAt = (x, z) => this.arena.solidAt(x, z);
+    this.smokes = [];
     this.grip = 1;                 // how well feet hold on the ground (rain makes it slick)
     this.perk = { dmg: 1, deflect: 1, kunai: 1, postureDmg: 1, lifesteal: false };
     this.timers = [];
@@ -119,6 +124,7 @@ class Game {
     this.perfectCd = 0;
     this.SamuraiClass = Samurai;
     this.weather = new Weather(this);
+    if (this.arena.looks) this.weather.set('dusk');
     this.fire = new Fire(this);
     this.defense = new Defense(this);
     this.daily = new Daily(this);
@@ -298,6 +304,7 @@ class Game {
     for (const w of this.kunais) w.dispose();
     this.kunais = [];
     this.arena.resetProps();
+    this.smokes = [];
     this.fire.clear();
     if (this.bind.active) this.bind.end(null);
     this.standoff.cancel();
@@ -359,6 +366,7 @@ class Game {
         this.waveCleared = true;
         this.audio.sting?.('wave');
         this.ctl.heals = Math.min(this.ctl.maxHeals, this.ctl.heals + 1);
+        this.ctl.smokes = Math.min(2, this.ctl.smokes + 1);
         this.callout(`WELLE ${this.wave} ÜBERSTANDEN`, null, 'parry');
         this.progress.earn(15 * this.wave);
         this.perks.offer();
@@ -427,6 +435,13 @@ class Game {
   callWave() { if (this.mode !== 'tutorial') this.spawnWave(); }
   callAlly() { if (this.sandbox || this.mode === 'survival') this.spawnFighter(0); }
   cycleMode() { if (this.sandbox) this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]); }
+
+  /** Load the page again (another map was chosen). An address that names a map would win over the choice: drop it. */
+  reload() {
+    const u = new URL(location.href);
+    u.searchParams.delete('map');
+    if (u.href === location.href) location.reload(); else location.href = u.href;
+  }
 
   /** Back to the mode selection. */
   openMainMenu() {
@@ -519,6 +534,7 @@ class Game {
         const dir = c.rel.clone().normalize();
         if (hs.breakable || hs.mat) w.contactT = this.time;
         if (hs.breakable) this.arena.breakables.weaponHit(hs.breakable, w, c.point, dir, c.speed);
+        if (hs.bell) this.arena.ringBell(w.owner || w.thrower, c.speed, dir);
         if (hs.mat && w.attached && w.def.sever && c.wshape?.hsPart === 'blade' && c.speed > 6.5
             && this.arena.cutMat(hs.mat, c.point, dir, c.speed)) {
           this.audio.wood(0.8, true);
@@ -791,7 +807,10 @@ class Game {
         this.shake = Math.max(this.shake, clamp(sev * 1.4, 0.15, 1) * (byPlayer || k.isPlayer ? 1 : 0.5));
       }
       if (k.isPlayer) this.hurtFlash(sev * 70);
-      if (!ev.includes('dead') && k.addPosture(POSTURE.wound * sev + 0.06)) this.onGuardBroken(k, c.point);
+      // caught unawares (dazed by the bell, lost in smoke): the first cut that lands takes his guard apart
+      const caught = !k.isPlayer && !k.human && !!k.brain?.wasLost && k.brokenT <= 0 && !ev.includes('dead');
+      if (caught) this.callout('ÜBERRASCHT!', c.point, 'parry');
+      if (!ev.includes('dead') && k.addPosture(caught ? k.postureMax : POSTURE.wound * sev + 0.06)) this.onGuardBroken(k, c.point);
     }
 
     // ---- physical knock: momentum of the blow
@@ -1095,7 +1114,7 @@ class Game {
   // ------------------------------------------------------------------ movement: ground, walls, dodges
   /** Height of whatever is under a point (the podium), given how high the feet are. */
   groundAt(x, z, feetY) {
-    let g = 0;
+    let g = this.arena.solidAt(x, z) ? 0 : -60;      // beyond the edge of a map that has one: nothing
     for (const p of this.platforms) {
       // a foot on the edge counts: the body is wider than the point it is steered by
       if (x > p.x0 - 0.3 && x < p.x1 + 0.3 && z > p.z0 - 0.3 && z < p.z1 + 0.3 && feetY > p.top - 0.45 && p.top > g) g = p.top;
@@ -1107,7 +1126,7 @@ class Game {
   wallNear(k, reach = 0.9) {
     const p = k.core.position;
     const r = Math.hypot(p.x, p.z);
-    if (r > WALL_FACE - reach) return { x: -p.x / r, z: -p.z / r };
+    if (r > WALL_FACE - reach && !this.arena.openAt(p.x, p.z)) return { x: -p.x / r, z: -p.z / r };
     const feet = p.y - 0.98;
     for (const b of this.platforms) {
       if (feet > b.top - 0.1) continue;
@@ -1408,6 +1427,94 @@ class Game {
     }
   }
 
+  /** On a map with an edge: whoever has gone over it is lost. */
+  updateFalls() {
+    if (!this.arena.abyss) return;
+    for (const k of this.fighters) {
+      if (k.fell || k.disposed) continue;
+      const p = k.state === 'active' ? k.core.position : k.ragBodies?.pelvis?.position;
+      if (!p || p.y > -2.2 || this.arena.solidAt(p.x, p.z)) continue;
+      k.fell = true;
+      const wasDead = k.dead;
+      const at = _a.set(p.x, 0.4, p.z);
+      if (k.state === 'active') k.goRagdoll(new THREE.Vector3(k.core.velocity.x * 0.3, 0, k.core.velocity.z * 0.3), 'torso', true);
+      k.getUpAt = 0;
+      if (!wasDead) {
+        k.inj.cause = k.inj.cause || 'In den Abgrund gestürzt';
+        this.onFighterDeath(k, at);
+        this.audio.voice?.('pain', 0.9);
+        if (k.team === 1) {
+          this.callout('IN DEN ABGRUND!', at, 'crit');
+          this.slowT = Math.max(this.slowT, 0.35);
+          if (!k.human) { this.progress.earn(5 * (k.kind?.rank ?? 1)); this.ach.add('falls'); }
+        }
+      }
+      k.dead = true;
+      if (k.isPlayer) { this.hurtFlash(30); this.shake = Math.max(this.shake, 0.5); }
+    }
+    // a word of warning when the player's heels are near an open edge
+    const P = this.player;
+    this.edgeSayT = Math.max(0, (this.edgeSayT || 0) - 1 / 60);
+    if (this.edgeSayT <= 0 && P.state === 'active' && !P.airborne && this.arena.nearEdge(P.core.position.x, P.core.position.z, 1.4)) {
+      this.callout('VORSICHT, KANTE!', null, 'small');
+      this.edgeSayT = 6;
+    }
+  }
+
+  // ------------------------------------------------------------------ smoke
+  /** Is this point inside a cloud of smoke? */
+  inSmoke(x, z) {
+    for (const s of this.smokes) if (s.t > 0.25 && Math.hypot(x - s.x, z - s.z) < s.r) return true;
+    return false;
+  }
+
+  /** Can `k` not make out `tgt` for the smoke? Close enough, a shape in the smoke is still a shape. */
+  smokeHides(k, tgt) {
+    if (!this.smokes.length) return false;
+    const a = k.getPos(_a), b = tgt.getPos(_b);
+    if (Math.hypot(a.x - b.x, a.z - b.z) < 1.5) return false;
+    return this.inSmoke(a.x, a.z) || this.inSmoke(b.x, b.z);
+  }
+
+  /** A smoke bomb at the feet: for a few seconds nobody in or beyond the cloud sees anything. */
+  throwSmoke(k) {
+    const ctl = k.isPlayer ? this.ctl : null;
+    if (ctl) {
+      if (ctl.smokes <= 0) { this.callout('Keine Rauchbomben mehr', null, 'small'); return false; }
+      ctl.smokes--;
+    }
+    const p = k.getPos(_a);
+    this.smokes.push({ x: p.x, z: p.z, r: 3.6, t: 0, life: 6.5, emit: 0, by: k });
+    this.effects.dust(_b.set(p.x, 0.1, p.z), 30, 3);
+    this.audio.whooshBurst?.(0.8); this.audio.thud?.(0.5);
+    k.iframeT = Math.max(k.iframeT, 0.3);
+    // whoever was about to strike into the cloud loses the thread
+    for (const e of this.fighters) {
+      if (e.team === k.team || e.state !== 'active' || !e.brain) continue;
+      const q = e.core.position;
+      if (Math.hypot(q.x - p.x, q.z - p.z) < 6) e.brain.dazed?.(0.5);
+    }
+    if (k.isPlayer) { this.callout('RAUCH!', null, 'small'); this.ach.add('smokes'); }
+    return true;
+  }
+
+  updateSmoke(dt) {
+    for (let i = this.smokes.length - 1; i >= 0; i--) {
+      const s = this.smokes[i];
+      s.t += dt;
+      const k = clamp(Math.min(s.t / 0.3, (s.life - s.t) / 1.5), 0, 1);
+      s.emit += dt * 80 * k;
+      while (s.emit > 1) {
+        s.emit -= 1;
+        const a = Math.random() * Math.PI * 2, r = Math.sqrt(Math.random()) * s.r * 0.85;
+        _a.set(s.x + Math.sin(a) * r, rand(0.2, 1.9), s.z + Math.cos(a) * r);
+        this.effects.mist.emit(_a, _b.set(Math.sin(a) * 0.25, rand(0.05, 0.3), Math.cos(a) * 0.25),
+          { size: rand(1.5, 2.5), grow: 0.6, life: rand(1.6, 2.6), alpha: 0.85, color: Math.random() < 0.5 ? 0xd8d8dc : 0xb4b4bc, grav: -0.08, drag: 0.8 });
+      }
+      if (s.t >= s.life) this.smokes.splice(i, 1);
+    }
+  }
+
   /** Bodies in flight knock over comrades, smash what they land in and hurt themselves on the wall. */
   updateThrown(dt) {
     for (const f of this.fighters) {
@@ -1436,7 +1543,7 @@ class Game {
         this.arena.breakables.damage(it, 45, pos.clone(), dir.clone());
         hit = true;
       }
-      if (Math.hypot(pos.x, pos.z) > WALL_FACE - 0.6) { hit = true; this.callout('GEGEN DIE WAND!', pos, 'crit'); }
+      if (Math.hypot(pos.x, pos.z) > WALL_FACE - 0.6 && !this.arena.openAt(pos.x, pos.z)) { hit = true; this.callout('GEGEN DIE WAND!', pos, 'crit'); }
       if (hit) {
         f.thrownT = 0;
         f.inj.wound('torso', 0.22, 'blunt', 1);
@@ -1960,7 +2067,7 @@ class Game {
       : this.mode === 'versus' ? ` · Spieler 1  ${this.versus.score[0]} : ${this.versus.score[1]}  Spieler 2${this.versus.pad.connected ? '' : ' (Pfeiltasten , . - · oder Gamepad anschließen)'}`
       : this.mode === 'chaos' ? ` · ${fmtTime(this.runT)} · ${this.livingEnemies.length} im Hof` : '';
     if (wv !== this.lastWave) { ui.wave.textContent = wv; this.lastWave = wv; }
-    const tools = `Verbände ${this.ctl.heals}${this.ctl.free ? ' · Freie Klinge' : ''}${this.ctl.lock ? ' · Ziel erfasst' : ''}`;
+    const tools = `Verbände ${this.ctl.heals} · Rauch ${this.ctl.smokes}${this.ctl.free ? ' · Freie Klinge' : ''}${this.ctl.lock ? ' · Ziel erfasst' : ''}`;
     if (tools !== this.lastTools) { ui.tools.textContent = tools; this.lastTools = tools; }
     ui.posture.style.width = (clamp(P.posture / P.postureMax, 0, 1) * 100).toFixed(1) + '%';
     ui.stamina.style.width = (this.ctl.stamina * 100).toFixed(1) + '%';
@@ -2111,6 +2218,8 @@ class Game {
       }
       for (const h of this.horses) h.update(dt);
       this.updateThrown(dt);
+      this.updateFalls();
+      this.updateSmoke(dt);
       this.fire.update(dt);
     } else if (frame.lmbPressed && !this.ctl.free) {
       this.ctl.buffer = 0.3;   // don't swallow a click during hit-stop
@@ -2122,6 +2231,7 @@ class Game {
     let steps = 0;
     while (this.acc >= FIXED_DT && steps < 8) {
       for (const k of this.fighters) k.physicsStep(FIXED_DT);
+      this.arena.step();
       this.world.step(FIXED_DT);
       this.time += FIXED_DT;
       this.processContacts();

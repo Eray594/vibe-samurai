@@ -704,3 +704,124 @@ export function beyondWall(m) {
 export function foliageDepth(map, alphaTest = 0.4) {
   return new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, map, alphaTest, side: THREE.DoubleSide });
 }
+
+// ------------------------------------------------------------------ the mountain map
+/** Smooth seeded 3D noise, 0..1: `n(x, y, z)`, and `n.fbm(x, y, z, octaves)`. For shaping rock. */
+export function noise3(seed) {
+  const R = rng(seed), N = 32, lat = new Float32Array(N * N * N);
+  for (let i = 0; i < lat.length; i++) lat[i] = R();
+  const at = (x, y, z) => lat[(((z & 31) << 5) + (y & 31) << 5) + (x & 31)];
+  const n = (x, y, z) => {
+    const x0 = Math.floor(x), y0 = Math.floor(y), z0 = Math.floor(z);
+    const fx = smooth(x - x0), fy = smooth(y - y0), fz = smooth(z - z0);
+    const a = at(x0, y0, z0), b = at(x0 + 1, y0, z0), c = at(x0, y0 + 1, z0), d = at(x0 + 1, y0 + 1, z0);
+    const e = at(x0, y0, z0 + 1), f = at(x0 + 1, y0, z0 + 1), g = at(x0, y0 + 1, z0 + 1), h = at(x0 + 1, y0 + 1, z0 + 1);
+    const p = a + (b - a) * fx, q = c + (d - c) * fx, r = e + (f - e) * fx, s = g + (h - g) * fx;
+    const u = p + (q - p) * fy, v = r + (s - r) * fy;
+    return u + (v - u) * fz;
+  };
+  n.fbm = (x, y, z, oct = 3) => {
+    let s = 0, a = 1, t = 0;
+    for (let o = 0; o < oct; o++) { s += a * n(x, y, z); t += a; a *= 0.5; x = x * 2.03 + 11.3; y = y * 2.03 + 5.7; z = z * 2.03 + 3.1; }
+    return s / t;
+  };
+  return n;
+}
+
+/** Old flagstones laid as they came: many-sided slabs with worn rims, grit and moss in the joints. */
+export function pavingMaps(S = 512, cells = 7) {
+  const R = rng(301), n = cells * cells;
+  const px = new Float32Array(n), py = new Float32Array(n), tone = new Float32Array(n), warm = new Float32Array(n), tx = new Float32Array(n), ty = new Float32Array(n);
+  for (let i = 0; i < n; i++) { px[i] = R.range(0.12, 0.88); py[i] = R.range(0.12, 0.88); tone[i] = R.range(0.8, 1.08); warm[i] = R.range(-1, 1); tx[i] = R.range(-0.12, 0.12); ty[i] = R.range(-0.12, 0.12); }
+  const big = fbmField(S, S, 4, 4, 4, 302), speck = fbmField(S, S, 128, 128, 2, 303), mossN = fbmField(S, S, 9, 9, 3, 304), pit = fbmField(S, S, 48, 48, 2, 305);
+  const cs = S / cells;
+  return bake(S, S, (x, y, o) => {
+    const gx = x / cs, gy = y / cs, ix = gx | 0, iy = gy | 0;
+    let f1 = 9, f2 = 9, id = 0, ex1 = 0, ey1 = 0;
+    for (let dy = -1; dy <= 1; dy++) {
+      const yy = (iy + dy + cells) % cells;
+      for (let dx = -1; dx <= 1; dx++) {
+        const xx = (ix + dx + cells) % cells, j = yy * cells + xx;
+        const ex = ix + dx + px[j] - gx, ey = iy + dy + py[j] - gy, d = ex * ex + ey * ey;
+        if (d < f1) { f2 = f1; f1 = d; id = j; ex1 = ex; ey1 = ey; } else if (d < f2) f2 = d;
+      }
+    }
+    const i = y * S + x;
+    const e = (Math.sqrt(f2) - Math.sqrt(f1)) * cs + (speck[i] - 0.5) * 5 + (big[i] - 0.5) * 3;      // px to the joint, chipped
+    const joint = sstep(5, 1.8, e), rim = sstep(13, 4, e);
+    const p = sstep(0.6, 0.8, pit[i]);
+    const k = (0.72 + 0.32 * big[i] + 0.26 * (speck[i] - 0.5)) * tone[id] * (1 - p * 0.28) * (1 - rim * 0.12);
+    const w = warm[id] * 9;
+    let r = (178 + w) * k, g = 172 * k, b = (162 - w) * k;
+    const m = joint * (0.25 + 0.75 * sstep(0.36, 0.6, mossN[i])), dirt = joint * (1 - m);
+    const mk = 0.6 + 0.8 * speck[i];
+    r = r * (1 - m) + 62 * mk * m; g = g * (1 - m) + 84 * mk * m; b = b * (1 - m) + 38 * mk * m;
+    r = r * (1 - dirt) + 52 * dirt; g = g * (1 - dirt) + 46 * dirt; b = b * (1 - dirt) + 40 * dirt;
+    const li = sstep(0.7, 0.8, mossN[(i + 9000) % (S * S)]) * (1 - joint) * 0.4;                    // pale lichen on the slabs
+    r = r * (1 - li) + 186 * li; g = g * (1 - li) + 190 * li; b = b * (1 - li) + 150 * li;
+    o[0] = r; o[1] = g; o[2] = b;
+    o[3] = (1 - joint) * (0.62 - rim * 0.16) + joint * 0.12 * m + big[i] * 0.12 + speck[i] * 0.12 - p * 0.1 - (ex1 * tx[id] + ey1 * ty[id]) * 0.5;
+    o[4] = 0.84 + 0.16 * Math.max(joint, speck[i]);
+  }, { bump: 3.4, rough: true });
+}
+
+/** A cliff face: beds of rock lying one on another, each broken by its own upright joints, stained and lichened. */
+export function cliffMaps(S = 512) {
+  const warp = fbmField(S, S, 3, 2, 4, 311), crack = fbmField(S, S, 10, 3, 4, 312), big = fbmField(S, S, 4, 4, 5, 313), speck = fbmField(S, S, 128, 128, 2, 314);
+  const lich = fbmField(S, S, 8, 8, 4, 315), streak = fbmField(S, S, 36, 2, 3, 316), fine = fbmField(S, S, 6, 48, 3, 318);
+  const R = rng(317), beds = [], lut = new Uint8Array(1024);
+  for (let v = 0; v < 1;) { const h = Math.min(1 - v, R.range(0.05, 0.24)); const js = []; for (let k = 0, nj = 2 + Math.floor(R() * 5); k < nj; k++) js.push(R() * S); beds.push([v, v + h, R.range(0.9, 1.06), R.range(-1, 1), js, R.range(0, 1)]); v += Math.max(h, 0.005); }
+  for (let k = 0; k < 1024; k++) { const v = k / 1024; lut[k] = Math.max(0, beds.findIndex((b) => v >= b[0] && v < b[1])); }
+  return bake(S, S, (x, y, o) => {
+    const i = y * S + x;
+    let v = y / S + (warp[i] - 0.5) * 0.1; v -= Math.floor(v);
+    const b = beds[lut[(v * 1024) | 0]], dpx = Math.min(v - b[0], b[1] - v) * S;
+    const seam = sstep(3.5, 1, dpx) * (0.35 + 0.65 * big[(i + 7777) % (S * S)]), shelf = sstep(18, 3, (v - b[0]) * S);      // the parting, and the shade under the bed above
+    // upright joints, each running through one bed only
+    let dj = S;
+    const jx = x + (crack[i] - 0.5) * 26;
+    for (const c of b[4]) { let q = Math.abs(jx - c); q = Math.min(q, S - q); if (q < dj) dj = q; }
+    const joint = sstep(2.6, 0.8, dj) * (0.45 + 0.55 * b[5]);
+    const lam = (fine[i] - 0.5) * 0.14;                                                        // thin laminae inside a bed
+    const st = sstep(0.5, 0.8, streak[i]) * 0.34;
+    const li = sstep(0.6, 0.74, lich[i]) * 0.5 * (1 - seam);
+    const k = (0.56 + 0.56 * big[i] + 0.22 * (speck[i] - 0.5) + lam) * b[2] * (1 - seam * 0.45) * (1 - joint * 0.55) * (1 - st) * (1 - shelf * 0.1);
+    const w = b[3] * 6;
+    o[0] = ((180 + w) * (1 - li) + 178 * li) * k; o[1] = (170 * (1 - li) + 176 * li) * k; o[2] = ((160 - w) * (1 - li) + 128 * li) * k;
+    o[3] = (1 - seam) * (1 - joint) * 0.55 + big[i] * 0.2 + speck[i] * 0.14 + fine[i] * 0.12 + b[5] * 0.1;
+  }, { bump: 5 });
+}
+
+/** A spray of maple leaves in their autumn colours on a transparent ground. */
+export function mapleTexture(S = 512) {
+  const c = mkCanvas(S, S), g = c.getContext('2d'), R = rng(321);
+  const lobes = [[-2.25, 0.5], [-1.5, 0.78], [-0.75, 0.96], [0, 1.08], [0.75, 0.96], [1.5, 0.78], [2.25, 0.5]];
+  const stamps = [[2, 80, 40], [10, 88, 46], [20, 92, 50], [30, 95, 53], [40, 92, 55], [356, 72, 34]].map(([hue, sat, lig]) => {
+    const sc = mkCanvas(72, 72), g = sc.getContext('2d'), r = 32;
+    g.translate(36, 40);
+    const gr = g.createRadialGradient(0, 0, 2, 0, 0, r);
+    gr.addColorStop(0, `hsl(${hue + 8}, ${sat}%, ${lig + 8}%)`); gr.addColorStop(1, `hsl(${hue}, ${sat}%, ${lig}%)`);
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(0, 0);
+    for (let k = 0; k < lobes.length; k++) {
+      const [a, l] = lobes[k], n0 = a - 0.37, n1 = a + 0.37;
+      g.lineTo(Math.sin(n0) * r * 0.3, -Math.cos(n0) * r * 0.3);
+      g.quadraticCurveTo(Math.sin(a - 0.12) * r * l * 0.6, -Math.cos(a - 0.12) * r * l * 0.6, Math.sin(a) * r * l, -Math.cos(a) * r * l);
+      g.quadraticCurveTo(Math.sin(a + 0.12) * r * l * 0.6, -Math.cos(a + 0.12) * r * l * 0.6, Math.sin(n1) * r * 0.3, -Math.cos(n1) * r * 0.3);
+    }
+    g.closePath(); g.fill();
+    g.strokeStyle = `hsla(${hue + 14}, 90%, ${lig + 16}%, 0.5)`; g.lineWidth = 1;
+    for (const [a, l] of lobes) { g.beginPath(); g.moveTo(0, 0); g.lineTo(Math.sin(a) * r * l * 0.8, -Math.cos(a) * r * l * 0.8); g.stroke(); }
+    return sc;
+  });
+  const spot = () => { const a = R() * 6.28, d = Math.pow(R(), 0.65) * S * 0.44; return [S / 2 + Math.cos(a) * d, S / 2 + Math.sin(a) * d]; };
+  g.strokeStyle = '#2e1c16'; g.lineCap = 'round';
+  for (let i = 0; i < 10; i++) { const [x, y] = spot(), [x2, y2] = spot(); g.lineWidth = R.range(2, 4.5); g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(S / 2, S / 2, x2, y2); g.stroke(); }
+  for (let i = 0; i < 230; i++) {
+    const [x, y] = spot(), r = R.range(20, 34);
+    g.save(); g.translate(x, y); g.rotate(R() * 6.28); g.scale(1, R.range(0.6, 1));
+    g.drawImage(R.pick(stamps), -r * 1.1, -r * 1.2, r * 2.2, r * 2.2);
+    g.restore();
+  }
+  return cutout(c, [196, 62, 24]);
+}

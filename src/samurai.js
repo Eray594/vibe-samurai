@@ -482,7 +482,7 @@ export class Samurai {
       T.b.set(0, 1, 0).applyQuaternion(qToT(this.core.quaternion, T.q));
       const tilt = Math.acos(clamp(T.b.y, -1, 1));
       if (tilt > 0.85 || (tilt > 0.5 && this.balance < 0.25)) this.goRagdoll(null, null, false);
-      else if (this.core.position.y < -3) this.resetTo(new THREE.Vector3(0, 0, 0));
+      else if (this.core.position.y < -3 && !this.game.arena?.abyss) this.resetTo(new THREE.Vector3(0, 0, 0));
     } else {
       this.ragTime += dt;
       // dragging a bleeding body leaves a trail
@@ -492,7 +492,7 @@ export class Samurai {
         if (this.trailT <= 0 && tp) { this.trailT = 0.3; this.game.effects.decal(tp.x + rand(-0.1, 0.1), tp.z + rand(-0.1, 0.1), rand(0.18, 0.34)); }
       }
       const pel = this.ragBodies.pelvis.position;
-      if (pel.y < -5) for (const n in this.ragBodies) { this.ragBodies[n].position.y += 6; this.ragBodies[n].velocity.setZero(); }
+      if (pel.y < -5 && !this.game.arena?.abyss) for (const n in this.ragBodies) { this.ragBodies[n].position.y += 6; this.ragBodies[n].velocity.setZero(); }
       if (!this.dead && this.getUpAt > 0 && this.ragTime > this.getUpAt && inj.canStand && inj.consciousness > 0.25) this.getUp();
     }
   }
@@ -550,6 +550,7 @@ export class Samurai {
     }
     // --- horizontal locomotion
     const mv = this.intent.move;
+    if (!this.isPlayer && !this.human && this.staggerT <= 0 && this.game.arena?.abyss) this.game.arena.holdBack(this);
     const mob = 0.2 + 0.8 * legs;
     const grip = this.mountH > 0 ? 1 : (this.game.grip ?? 1);       // rain: the gravel is slick
     let ax = (mv.x * mob - b.velocity.x) * 14 * grip, az = (mv.z * mob - b.velocity.z) * 14 * grip;
@@ -759,6 +760,7 @@ export class Samurai {
     this.life.land = this.life.landV = this.life.turn = this.life.shake = 0;
     this.guardKick.set(0, 0, 0); this.guardKickV.set(0, 0, 0);
     this.dead = false;
+    this.fell = false;
     this.inj.reset();
     this.clearWounds();
     this.restoreLimbs();

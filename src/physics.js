@@ -13,15 +13,16 @@ export const G = {
   EWEAP: 16,   // enemy weapons
   RAG: 32,     // ragdoll limbs
   PROP: 64,    // crates, barrels, dropped weapons, thrown kunai
+  GROUND: 128, // the floor of a map with an edge to fall off: what has gone over the edge stops colliding with it
 };
 const ALL = 0xffff;
 export const MASK = {
   STATIC: ALL,
-  PCORE: G.STATIC | G.PCORE | G.ECORE | G.EWEAP | G.RAG | G.PROP,
-  ECORE: G.STATIC | G.PCORE | G.ECORE | G.PWEAP | G.RAG | G.PROP,
-  PWEAP: G.STATIC | G.ECORE | G.EWEAP | G.RAG | G.PROP,
-  EWEAP: G.STATIC | G.PCORE | G.PWEAP | G.RAG | G.PROP,
-  RAG: G.STATIC | G.PCORE | G.ECORE | G.PWEAP | G.EWEAP | G.PROP | G.RAG,
+  PCORE: G.STATIC | G.GROUND | G.PCORE | G.ECORE | G.EWEAP | G.RAG | G.PROP,
+  ECORE: G.STATIC | G.GROUND | G.PCORE | G.ECORE | G.PWEAP | G.RAG | G.PROP,
+  PWEAP: G.STATIC | G.GROUND | G.ECORE | G.EWEAP | G.RAG | G.PROP,
+  EWEAP: G.STATIC | G.GROUND | G.PCORE | G.PWEAP | G.RAG | G.PROP,
+  RAG: G.STATIC | G.GROUND | G.PCORE | G.ECORE | G.PWEAP | G.EWEAP | G.PROP | G.RAG,
   PROP: ALL,
 };
 

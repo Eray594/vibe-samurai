@@ -849,6 +849,7 @@ export class Effects {
    */
   stain(x, z, size, dx = 0, dz = 0, stretch = 1, cells = D_POOL) {
     if (this.noBlood || !(fin(x) && fin(z) && size > 0 && fin(size))) return;
+    if (this.solidAt && !this.solidAt(x, z)) return;      // nothing to stain out over the edge
     const i = this.decalNext;
     this.decalNext = (this.decalNext + 1) % this.decalN;
     if (this.decalHigh < this.decalNext || this.decalNext === 0) this.decalHigh = this.decalNext === 0 ? this.decalN : this.decalNext;

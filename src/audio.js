@@ -392,6 +392,18 @@ export class AudioFX {
     }
   }
 
+  /** The big bronze bell: a low strike tone with slow, slightly detuned partials that beat against each other. */
+  bell(intensity = 1) {
+    const t = this.begin('bell', 0.12, 5);
+    if (t === null) return;
+    const v = clamp(intensity, 0.05, 1), out = this.bus, f = 98;
+    for (const [m, a, d] of [[1, 0.42, 5.2], [1.012, 0.26, 4.6], [2.0, 0.24, 3.6], [2.76, 0.17, 2.4], [4.07, 0.1, 1.6], [5.43, 0.06, 0.9]]) {
+      this.osc('sine', f * m, t, t + d * (0.4 + 0.6 * v) + 0.1).connect(this.env(t, a * v, 0.006, d * (0.4 + 0.6 * v))).connect(out);
+    }
+    this.burst(t, 'bandpass', 640, 0.8, 0.3 * v, 0.002, 0.07, out);      // the beam meeting the bronze
+    this.thump(t, 70, 44, 0.2, 0.3 * v, 0.5, out);
+  }
+
   /** Soft click: lock-on, telegraphs, UI. */
   tick() {
     const t = this.begin('tick', 0.03, 0.1);

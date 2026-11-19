@@ -40,17 +40,17 @@ export class Weather {
     this.trail = new Map();
   }
 
-  get name() { return PRESETS[this.key].name; }
-  nameOf(key) { return PRESETS[key]?.name ?? key; }
+  get name() { return this.nameOf(this.key); }
+  nameOf(key) { return this.game.arena?.looks?.[key]?.name ?? PRESETS[key]?.name ?? key; }
   get raining() { return this.key === 'rain'; }
 
   next() { this.set(WEATHER_ORDER[(WEATHER_ORDER.indexOf(this.key) + 1) % WEATHER_ORDER.length]); }
 
   set(key) {
-    const P = PRESETS[key];
-    if (!P) return;
+    if (!PRESETS[key]) return;
     this.key = key;
     const g = this.game, a = g.arena;
+    const P = { ...PRESETS[key], ...(a.looks?.[key] || {}) };       // a map may have its own light
     a.hemi.color.set(P.hemi[0]); a.hemi.groundColor.set(P.hemi[1]); a.hemi.intensity = P.hemi[2];
     a.sunLight.color.set(P.sun[0]); a.sunLight.intensity = P.sun[1];
     g.scene.fog.color.set(P.fog[0]); g.scene.fog.density = P.fog[1];

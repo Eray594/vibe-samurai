@@ -1,6 +1,7 @@
 // What sits in front of the fighting: the main menu (modes, records, difficulty, language), the pause
 // panel, and the on-screen controls for touch devices.
 import { DIFFS } from './goals.js';
+import { MAPS } from './maps.js';
 
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const read = (key) => { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } };
@@ -14,6 +15,13 @@ export class Front {
     for (const b of document.querySelectorAll('#mode-cards .mode-card')) b.addEventListener('click', () => { if (!b.disabled) game.play(b.dataset.mode); });
     $('btn-main-settings').addEventListener('click', () => game.menu.toggle(true));
     for (const b of document.querySelectorAll('#diff-row [data-diff]')) b.addEventListener('click', () => { game.settings.set('diff', b.dataset.diff); this.refresh(); });
+    // another map is another world to build: the choice is stored and the page loaded again
+    for (const b of document.querySelectorAll('#map-row [data-map]')) b.addEventListener('click', () => {
+      if (b.dataset.map === game.map) return;
+      game.settings.set('map', b.dataset.map);
+      this.note('Die Karte wird geladen …');
+      game.reload();
+    });
     for (const b of document.querySelectorAll('#lang-row [data-lang]')) b.addEventListener('click', () => { game.i18n.set(b.dataset.lang); this.refresh(); });
     $('pause-resume').addEventListener('click', () => game.resume());
     $('pause-restart').addEventListener('click', () => { game.resetArena(); game.resume(); });
@@ -45,10 +53,14 @@ export class Front {
     }
     for (const b of document.querySelectorAll('#diff-row [data-diff]')) b.classList.toggle('active', b.dataset.diff === g.settings.diff);
     for (const b of document.querySelectorAll('#lang-row [data-lang]')) b.classList.toggle('active', b.dataset.lang === g.settings.lang);
+    for (const b of document.querySelectorAll('#map-row [data-map]')) b.classList.toggle('active', b.dataset.map === g.map);
+    this.note(MAPS[g.map]?.desc || '');
     const d = DIFFS[g.settings.diff] || DIFFS.normal;
     document.getElementById('diff-note').textContent = d.key === 'easy' ? 'Gegner treffen schwächer und greifen einzeln an · weniger Ehre'
       : d.key === 'hard' ? 'Gegner treffen härter und greifen zu mehreren an · mehr Ehre' : 'So ist das Spiel gedacht';
   }
+
+  note(text) { const el = document.getElementById('map-note'); if (el) el.textContent = text; }
 
   /** Every frame: the pause panel is up exactly while a started game has let go of the mouse. */
   update() {

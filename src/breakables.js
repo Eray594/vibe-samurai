@@ -134,7 +134,7 @@ export class Breakables {
   }
 
   spawnAll() {
-    for (const [kind, x, z, o] of SPOTS) this.add(kind, x, z, o);
+    for (const [kind, x, z, o] of this.arena.spots || SPOTS) this.add(kind, x, z, o);
     for (let i = 0; i < 6; i++) {
       const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
       this.add('lantern', Math.sin(a) * 12.1, Math.cos(a) * 12.1, { rot: a });

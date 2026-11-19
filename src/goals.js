@@ -36,6 +36,9 @@ export const GOALS = [
   { key: 'trap10', name: 'Fallensteller', desc: 'Erwische 10 Gegner mit Fallen', stat: 'trapHits', need: 10, honor: 50 },
   { key: 'boss', name: 'Anführer gefällt', desc: 'Besiege einen Anführer', stat: 'boss', need: 1, honor: 100 },
   { key: 'daily', name: 'Tagwerk', desc: 'Erreiche Welle 3 in der Tagesaufgabe', stat: 'daily', need: 3, honor: 60 },
+  { key: 'fall', name: 'Tiefer Fall', desc: 'Stoße einen Gegner in den Abgrund', stat: 'falls', need: 1, honor: 50 },
+  { key: 'bell', name: 'Glockenschlag', desc: 'Bringe Gegner mit der Tempelglocke ins Wanken', stat: 'bell', need: 1, honor: 40 },
+  { key: 'smoke', name: 'Im Rauch verschwunden', desc: 'Zünde eine Rauchbombe', stat: 'smokes', need: 1, honor: 20 },
   { key: 'tutor', name: 'Schüler', desc: 'Schließe die Einführung ab', stat: 'tutorial', need: 1, honor: 30 },
 ];
 /** What the player is told on screen says what he just did. */

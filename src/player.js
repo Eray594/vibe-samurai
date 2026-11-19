@@ -147,6 +147,7 @@ export class PlayerController {
     this.counterT = 0;        // just deflected: the next cut is an instant counter
     this.spinTo = null;
     this.heals = 3;
+    this.smokes = 2;
     this.mode = 'guard';
     this.sprintAttack = false;
     this.stance = 1;          // index into STANCES: 0 low, 1 middle, 2 high
@@ -276,6 +277,7 @@ export class PlayerController {
     this.comboI = 0;
     this.chain = 0; this.chainT = 0; this.lastDodgeAt = -9;
     this.heals = this.maxHeals;
+    this.smokes = 2;
     this.iaiCharge = 0;
     this.iaiCd = 0;
     this.stamina = 1; this.exhaustT = 0; this.plunge = null;
@@ -753,5 +755,6 @@ export class PlayerController {
       else game.throwKunai(k, this.lock, this.yaw, this.pitch);
     }
     if (pressed.has('KeyC') && k.isPlayer) game.playerHeal();
+    if (pressed.has('KeyY') && k.isPlayer && !broken) game.throwSmoke(k);
   }
 }

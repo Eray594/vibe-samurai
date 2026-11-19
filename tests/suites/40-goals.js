@@ -27,7 +27,7 @@ check('Im Training zählt nichts für die Erfolge', pl === 1);
 const saved = JSON.parse(localStorage.getItem('vibesamurai.goals'));
 check('Erfolge sind gespeichert', saved.done.includes('kill100') && saved.stats.kills === 100);
 g.menu.toggle(true);
-check('Das Dōjō zeigt den Stand der Erfolge', document.querySelectorAll('#goals .goal.done').length === A.done.size && $('goal-count').textContent.includes(`${A.done.size} / 21`), $('goal-count').textContent);
+check('Das Dōjō zeigt den Stand der Erfolge', document.querySelectorAll('#goals .goal.done').length === A.done.size && $('goal-count').textContent.includes(`${A.done.size} / 24`), $('goal-count').textContent);
 g.menu.toggle(false);
 g.progress.wipe();
 check('Fortschritt löschen löscht auch die Erfolge', A.done.size === 0 && Object.keys(A.stats).length === 0 && JSON.parse(localStorage.getItem('vibesamurai.goals')).done.length === 0);
