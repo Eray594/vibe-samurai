@@ -197,23 +197,32 @@ export function makeMaterials(style) {
     menpo: std({ color: style.menpo ?? 0x3a0c0c, metalness: 0.45, roughness: 0.3, side: THREE.DoubleSide }),
     flag: std({ color: style.sashimono ?? 0xffffff, roughness: 0.9, side: THREE.DoubleSide }),
   };
-  m.flash = [m.armor, m.plate, m.cloth, m.hakama, m.skin, m.face];
+  // everything plainly coloured ends up in this one material, coloured per vertex (see bake)
+  m.paint = std({ vertexColors: true, metalness: 0.22, roughness: 0.6, side: THREE.DoubleSide });
+  m.flash = [m.armor, m.paint, m.cloth, m.hakama, m.face];
   return m;
 }
 
 // ------------------------------------------------------------------ baking
 const _nm = new THREE.Matrix3();
 const _v = new THREE.Vector3();
-/** Merge every mesh under `src` into one mesh per material (transforms baked into the vertices). */
-function bake(src) {
+/**
+ * Merge every mesh under `src` into as few meshes as possible (transforms baked into the vertices):
+ * one per textured material, and a single one for everything plainly coloured, which carries its
+ * colours per vertex (`paint`). Only the big pieces throw shadows. Every mesh is a draw call, and
+ * a fighter has eleven such parts, so this is what decides how many fighters a machine can show.
+ */
+function bake(src, paint) {
   src.updateMatrixWorld(true);
   const buckets = new Map();
   src.traverse((o) => {
     if (!o.isMesh) return;
     const geo = o.geometry.index ? o.geometry.toNonIndexed() : o.geometry;
     const pos = geo.attributes.position, nor = geo.attributes.normal, uv = geo.attributes.uv;
-    let b = buckets.get(o.material);
-    if (!b) buckets.set(o.material, b = { p: [], n: [], u: [] });
+    const plain = !o.material.map && !o.material.transparent;
+    const mat = plain ? paint : o.material, col = o.material.color;
+    let b = buckets.get(mat);
+    if (!b) buckets.set(mat, b = { p: [], n: [], u: [], c: [] });
     _nm.getNormalMatrix(o.matrixWorld);
     for (let i = 0; i < pos.count; i++) {
       _v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
@@ -221,18 +230,23 @@ function bake(src) {
       _v.fromBufferAttribute(nor, i).applyMatrix3(_nm).normalize();
       b.n.push(_v.x, _v.y, _v.z);
       if (uv) b.u.push(uv.getX(i), uv.getY(i)); else b.u.push(0, 0);
+      if (plain) b.c.push(col.r, col.g, col.b);
     }
     if (geo !== o.geometry) geo.dispose();
     o.geometry.dispose();
   });
   const out = new THREE.Group();
+  let most = 0;
+  for (const b of buckets.values()) most = Math.max(most, b.p.length);
   for (const [mat, b] of buckets) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
     g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(b.u, 2));
+    if (mat === paint) g.setAttribute('color', new THREE.Float32BufferAttribute(b.c, 3));
     const mesh = new THREE.Mesh(g, mat);
-    mesh.castShadow = true; mesh.receiveShadow = true;
+    mesh.castShadow = b.p.length >= most * 0.4;       // small trimmings add nothing to a shadow but a draw call
+    mesh.receiveShadow = true;
     out.add(mesh);
   }
   return out;
@@ -460,6 +474,6 @@ export function buildParts(style) {
   P.fArmR = fore(); P.fArmL = fore();
   P.thighR = thigh(); P.thighL = thigh();
   P.shinR = shin(); P.shinL = shin();
-  for (const n of PART_NAMES) P[n] = bake(P[n]);
+  for (const n of PART_NAMES) P[n] = bake(P[n], m.paint);
   return { parts: P, mats: m };
 }

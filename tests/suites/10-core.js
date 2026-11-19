@@ -78,9 +78,12 @@ P.attackPhase = 'strike'; e.attackPhase = 'strike'; g.bind.cdUntil = 0;
 check('Klingenbindung beginnt', g.bind.tryStart(P, e, P.getHeadPos()) && P.bound);
 for (let i = 0; i < 14; i++) { g.input.lmbPressed = true; step(2); }
 check('Klingenbindung durch Hämmern gewonnen', !g.bind.active && !P.bound && e.posture > 0.3, e.posture); step(40);
-e = dummy('ashigaru', V(0, 0, 2.9)); fresh(); press('KeyG'); step(3);
-check('Packen (G)', P.holding === e && e.heldBy === P); step(20);
-g.input.lmbPressed = true; step(3); check('Werfen', e.state === 'ragdoll' && !P.holding, e.state); step(60);
+e = dummy('ashigaru', V(0, 0, 2.9)); fresh();
+// (a clash of blades may freeze the picture for a moment just now: the press is kept and acted on right after)
+press('KeyG'); for (let f = 0; f < 30 && !P.holding; f++) step(1);
+check('Packen (G)', P.holding === e && e.heldBy === P, [P.holding?.name, e.state, g.timeScale]); step(20);
+g.slowT = 0; g.hitStopT = 0; g.timeScale = 1;
+g.input.lmbPressed = true; step(4); check('Werfen', e.state === 'ragdoll' && !P.holding, e.state); step(60);
 solo(null); fresh(); g.input.rmb = true; step(10); press('KeyQ'); step(3); g.input.rmb = false;
 check('Waffe werfen (RMB+Q)', !P.weapon.attached); step(120);
 const wp = P.weapon.body.position; P.resetTo(V(wp.x, 0, wp.z), 0); P.weapon.drop(); step(5); press('KeyE'); step(3);
@@ -198,4 +201,52 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   g.composer.render = realRender;
   g.setPlayerWeapon('katana');
   check('Konter direkt nach einer Abwehr geht mit jeder Waffe', bad === '', bad);
+}
+
+// ---- sword work that flows, a guard that goes to meet the cut, and fighters that are cheap to draw
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel();
+  solo(null); fresh(0, 4);                       // cutting air: nothing to get stuck in, nobody to finish off
+  let strikes = 0; const sw = g.onSwing.bind(g); g.onSwing = (k, h) => { if (k === P) strikes++; sw(k, h); };
+  for (let f = 0; f < 84; f++) { if (f % 8 === 0) { g.input.lmbPressed = true; } step(1); }
+  g.onSwing = sw;
+  check('Kombo fließt: drei Hiebe in unter anderthalb Sekunden', strikes >= 3, strikes);
+  step(90);
+  const e = dummy('ronin', V(0, 0, 2.6)); fresh(0, 4);
+  const me = P.getPos();
+  const { POSES } = await import('/src/combat.js');
+  check('Deckung ohne Bedrohung: die gewohnte Stellung', ctl.blockPose(me) === POSES.block);
+  e.attackPhase = 'wind'; e.atk = { name: 'kesaR' };
+  const wp = e.weapon.worldPoint.bind(e.weapon);
+  e.weapon.worldPoint = (l, out) => out.set(me.x + 0.8, 1.3, me.z - 1);
+  const right = ctl.blockPose(me).hand.x;
+  e.weapon.worldPoint = (l, out) => out.set(me.x - 0.8, 1.3, me.z - 1);
+  const left = ctl.blockPose(me).hand.x, mid = ctl.blockPose(me).hand.y;
+  e.atk = { name: 'shomen' };
+  const high = ctl.blockPose(me).hand.y;
+  e.weapon.worldPoint = wp; e.attackPhase = null; e.atk = null;
+  check('Deckung geht dem Hieb entgegen: links, rechts, über Kopf', right > 0 && left < 0 && high > mid + 0.1, [right, left, mid, high]);
+  const k = g.spawnFighter(1, 'daimyo', V(5, 0, 0)); let meshes = 0, cast = 0;
+  for (const n in k.parts) k.parts[n].traverse?.((o) => { if (o.isMesh) { meshes++; if (o.castShadow) cast++; } });
+  check('Eine Figur kostet höchstens 45 Zeichenaufrufe (mit Schatten)', meshes > 10 && meshes + cast <= 45, [meshes, cast]);
+  g.removeNpc(k);
+  g.composer.render = realRender;
+}
+
+// ---- a press made while a hit freezes the picture is not lost
+{
+  g.composer.render = () => {};
+  g.setMode('duel'); g.standoff.cancel();
+  const e = dummy('ashigaru', V(0, 0, 2.9)); fresh();
+  g.hitStopT = 0.2; g.timeScale = 0.05;
+  const help0 = $('help').classList.contains('hidden');
+  press('KeyG'); press('KeyH'); step(2);
+  const during = !!P.holding;
+  step(40);
+  check('Im Treffer-Standbild gedrückt: der Griff kommt, sobald die Zeit weiterläuft', !during && P.holding === e, [during, !!P.holding]);
+  check('… Schalt-Tasten werden dabei nicht doppelt ausgeführt', $('help').classList.contains('hidden') === !help0);
+  if (!help0) $('help').classList.remove('hidden'); else $('help').classList.add('hidden');
+  g.throwHeld(P, 1); step(30);
+  g.composer.render = realRender;
 }

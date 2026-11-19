@@ -80,6 +80,9 @@ export const WEAPONS = {
     damage: 0.62, knock: 0.3, launchUp: 0, reach: 0, moveMul: 1, postureDmg: 0.6,
   },
 };
+// Tempo of the sword work as a whole: quicker to the top, quicker back to the guard, so cuts chain fluidly.
+for (const w of Object.values(WEAPONS)) { if (!w.swing) continue; w.swing.wind *= 0.82; w.swing.strike *= 0.93; w.swing.recover *= 0.78; }
+
 export const WEAPON_ORDER = ['katana', 'wakizashi', 'nodachi', 'yari', 'naginata', 'kanabo'];
 
 // ------------------------------------------------------------------

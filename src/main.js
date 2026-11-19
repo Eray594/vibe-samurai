@@ -41,6 +41,8 @@ const MODES = {
 // what M cycles through: the sandbox. The other modes are picked in the main menu.
 const MODE_ORDER = ['duel', 'skirmish', 'chaos', 'versus', 'training'];
 const TELE = { thrust: ['突', 'thrust'], sweep: ['足', 'sweep'], heavy: ['危', 'heavy'], arrow: ['弓', 'arrow'], gun: ['危', 'heavy'] };
+// what the fighter himself does (as opposed to keys that switch things, which act at once and only once)
+const FIGHT_KEYS = new Set(['Space', 'ShiftLeft', 'ShiftRight', 'KeyF', 'KeyG', 'KeyQ', 'KeyC', 'KeyX', 'Tab', 'KeyL', 'KeyV', 'KeyW', 'KeyS']);
 const fmtTime = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, '0')}`;
 const ALLY_TYPE = { ...TYPES.ronin, key: 'ally', name: 'Verbündeter', weapons: ['katana', 'yari', 'naginata'], styles: [ALLY_STYLE], posture: 1.2 };
 const ZONE_KNOCK = { head: 1.25, torso: 1.0, armR: 0.5, armL: 0.5, legR: 0.6, legL: 0.6 };
@@ -1957,6 +1959,18 @@ class Game {
     const dt = realDt * this.timeScale;
     const frozen = this.timeScale < 0.1;
     const P = this.player;
+    // A key or button pressed while a hit freezes the picture must not be lost: it is handed to the
+    // fighter as soon as time moves again (otherwise a guard raised into a clash simply vanishes).
+    const kept = this.keptInput;
+    if (kept && !frozen) {
+      for (const c of kept.pressed) frame.pressed.add(c);
+      frame.lmbPressed ||= kept.lmb; frame.rmbPressed ||= kept.rmb; frame.mmbPressed ||= kept.mmb;
+      this.keptInput = null;
+    } else if (frozen && !halted && !this.replay.active && (frame.pressed.size || frame.lmbPressed || frame.rmbPressed || frame.mmbPressed)) {
+      const k = this.keptInput || (this.keptInput = { pressed: new Set(), lmb: false, rmb: false, mmb: false });
+      for (const c of frame.pressed) if (FIGHT_KEYS.has(c)) k.pressed.add(c);
+      k.lmb ||= frame.lmbPressed; k.rmb ||= frame.rmbPressed; k.mmb ||= frame.mmbPressed;
+    } else if (halted) this.keptInput = null;
 
     // the finishing blow once more, slowly: nothing else moves meanwhile
     if (this.replay.active) {

@@ -272,7 +272,7 @@ export class Brain {
         k.dash(_v.set(-fx + rx * sd * 0.8, 0, -fz + rz * sd * 0.8).normalize());
       } else if (Math.random() < this.blockSkill * sober) {
         this.blockT = rand(0.55, 0.9);
-        k.aiDeflect = Math.random() < this.type.deflect;
+        k.aiDeflect = Math.random() < Math.min(0.6, this.type.deflect * 1.3);       // blades meet more often
         this.runner.cancel();
         this.comboLeft = 0;
         const tip = tw.worldPoint(tw.tipLocal, _h).sub(me).applyQuaternion(k.yawQuat().clone().invert());
@@ -298,7 +298,7 @@ export class Brain {
       const s = this.blockSide, bp = this.pose;
       bp.hand.set(0.12 * s, 0.42, -0.4);
       bp.dir.set(-0.85 * s, 0.5, -0.15).normalize();
-      this.runner.rest(dt, it, bp, 16);
+      this.runner.rest(dt, it, bp, 24);
       it.edgeHint = BLOCK_EDGE;
       it.power = 1.4;
     } else if (this.runner.busy) {

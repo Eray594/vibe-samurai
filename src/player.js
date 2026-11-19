@@ -7,6 +7,7 @@ const SENS_HAND = 0.0027;
 const _v = new THREE.Vector3();
 const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
+const _bq = new THREE.Quaternion();
 
 export class Input {
   constructor(canvas) {
@@ -205,6 +206,30 @@ export class PlayerController {
   }
 
   /** Rush straight at / through the aim, the cut landing on the way. Used by the dash-cut and the draw. */
+  /**
+   * Where the blade goes when the guard is up: across the body on the side the nearest cut comes
+   * from, and overhead against a blow from above. Without a threat, the plain block.
+   */
+  blockPose(me) {
+    const k = this.k, game = this.game;
+    let best = null, bd = 4.5;
+    for (const f of game.fighters) {
+      if (f.team === k.team || f.state !== 'active' || !f.weapon?.attached) continue;
+      if (f.attackPhase !== 'wind' && f.attackPhase !== 'strike') continue;
+      const p = f.core.position, d = Math.hypot(p.x - me.x, p.z - me.z);
+      if (d < bd) { bd = d; best = f; }
+    }
+    if (!best) return POSES.block;
+    const w = best.weapon;
+    const tip = w.worldPoint(w.tipLocal, _v).sub(me).applyQuaternion(_bq.copy(k.yawQuat()).invert());
+    if (Math.abs(tip.x) > 0.12) this.blockSide = tip.x > 0 ? 1 : -1;       // a little dead zone, so it does not flicker
+    const s = this.blockSide || 1, high = best.atk?.name === 'shomen';
+    const bp = this.bp || (this.bp = { hand: new THREE.Vector3(), dir: new THREE.Vector3() });
+    bp.hand.set(0.1 * s, high ? 0.6 : 0.42, -0.4);
+    bp.dir.set(-0.85 * s, high ? 0.2 : 0.5, -0.15).normalize();
+    return bp;
+  }
+
   rush(minSp = 6) {
     const k = this.k;
     if (this.aim) { const ap = this.aim.getPos(_q), me = k.getPos(_p); this.faceYaw = Math.atan2(-(ap.x - me.x), -(ap.z - me.z)); }
@@ -498,7 +523,7 @@ export class PlayerController {
     const wantGuard = inp.rmb && armed && !broken && !this.finisher && !k.holding;
     if (frame.rmbPressed) {
       // mashing the guard shrinks the deflection window
-      k.deflectWindow = (this.guardPressT < 0.4 ? DEFLECT_WINDOW * 0.45 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1);
+      k.deflectWindow = (this.guardPressT < 0.28 ? DEFLECT_WINDOW * 0.65 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1);
       this.guardPressT = 0;
     }
     this.iaiCd -= dt;
@@ -506,7 +531,7 @@ export class PlayerController {
     this.counterT -= dt;
     this.spinTo = null;
     this.buffer -= dt;
-    if (frame.lmbPressed && !this.free) this.buffer = 0.3;
+    if (frame.lmbPressed && !this.free) this.buffer = 0.38;
     this.comboT += dt;
     this.kunaiCd -= dt;
 
@@ -572,7 +597,7 @@ export class PlayerController {
       if (this.buffer > 0 && !wantGuard && k.kickT <= 0 && this.iaiCharge <= 0 && k.stuckT <= 0) {
         const a = this.runner.a;
         if (!a) this.startAttack(mx, mz, moving);
-        else if (a.phase === 'recover' && a.t > a.recoverDur * 0.2 && !this.finisher) this.startAttack(mx, mz, moving);
+        else if (a.phase === 'recover' && a.t > a.recoverDur * 0.05 && !this.finisher) this.startAttack(mx, mz, moving);       // the next cut flows straight out of the last
       }
       if (this.runner.busy) {
         const a = this.runner.a;
@@ -614,7 +639,7 @@ export class PlayerController {
         this.finisher = null;
         this.mode = 'parry';
         it.mode = 'parry';
-        this.runner.rest(dt, it, POSES.block, 20);
+        this.runner.rest(dt, it, this.blockPose(me), 30);       // the blade goes to meet the cut that is coming
         it.edgeHint = BLOCK_EDGE;
         it.power = 1.5;
         speedMul = 0.5;
@@ -628,7 +653,7 @@ export class PlayerController {
         this.finisher = null;
         this.mode = 'guard';
         it.mode = 'guard';
-        this.runner.rest(dt, it, k.sprinting || k.slideT > 0 ? POSES.carry : this.homePose(def), k.sprinting ? 8 : 6);
+        this.runner.rest(dt, it, k.sprinting || k.slideT > 0 ? POSES.carry : this.homePose(def), k.sprinting ? 9 : 10);
       }
     }
     k.atk = this.runner.a;

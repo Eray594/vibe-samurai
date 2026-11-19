@@ -17,7 +17,8 @@ const P = g.player, ctl = g.ctl, K = g.input.keys;
 const V = (x, y, z) => P.getPos().set(x, y, z);
 const solo = (type, pos) => { for (const e of [...g.npcs]) g.removeNpc(e); return type ? g.spawnFighter(1, type, pos) : null; };
 const dummy = (type, pos) => { const e = solo(type, pos); e.brain.update = () => {}; return e; };
-const fresh = (x = 0, z = 4, yaw = 0) => { K.clear(); g.input.lmb = g.input.rmb = false; P.resetTo(V(x, 0, z), 0); ctl.reset(); ctl.setStance(1); ctl.yaw = yaw; ctl.faceYaw = yaw; g.perfectCd = 0; step(5); };
+// (time runs normally again too: slow motion left over from the last test would stretch everything that follows)
+const fresh = (x = 0, z = 4, yaw = 0) => { K.clear(); g.input.lmb = g.input.rmb = false; g.slowT = 0; g.hitStopT = 0; g.timeScale = 1; g.keptInput = null; P.resetTo(V(x, 0, z), 0); ctl.reset(); ctl.setStance(1); ctl.yaw = yaw; ctl.faceYaw = yaw; g.perfectCd = 0; step(5); };
 /** Past the main menu, as if a mode had been picked and the mouse caught; nothing saved from earlier. */
 const begin = () => { try { localStorage.clear(); } catch { /* no storage */ } g.progress.wipe(); g.settings.set('diff', 'normal'); g.input.locked = true; g.started = true; };
 /** Start a mode the way the main menu does, without needing a real mouse. */

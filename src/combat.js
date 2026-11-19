@@ -68,7 +68,7 @@ export const MOVESETS = {
 };
 
 const CHARGE_TIME = 0.45;
-const HOLD = 0.28;                                   // share of the recovery spent frozen at the end of the cut (zanshin)
+const HOLD = 0.1;                                    // share of the recovery spent frozen at the end of the cut (zanshin)
 const PIVOT = new THREE.Vector3(0.03, 0.5, 0);       // between the shoulders: hands travel on arcs around it
 const _a = new THREE.Vector3();
 const _b = new THREE.Vector3();
@@ -128,7 +128,8 @@ export class AttackRunner {
     it.edgeExact = !a.thrust;
     it.power = 1;
     if (a.phase === 'wind') {
-      const u = smooth(clamp(a.t / a.windDur, 0, 1));
+      // the blade is lifted quickly and settles at the top, instead of starting and stopping like a machine
+      const x = clamp(a.t / a.windDur, 0, 1), u = 1 - (1 - x) * (1 - x);
       arcLerp(this.hand, a.from, a.wind, u);
       turn(this.bdir, a.fromDir, a.windDir, u);
       if (a.t >= a.windDur) {
@@ -140,7 +141,8 @@ export class AttackRunner {
         }
       }
     } else if (a.phase === 'strike') {
-      const u = smooth(clamp(a.t / a.strikeDur, 0, 1));
+      // the cut gathers speed all the way and is fastest where it lands
+      const x = clamp(a.t / a.strikeDur, 0, 1), u = 0.45 * smooth(x) + 0.55 * x * Math.sqrt(x);
       arcLerp(this.hand, a.wind, a.end, u);
       turn(this.bdir, a.windDir, a.endDir, u);
       it.power = a.power;
@@ -186,7 +188,7 @@ export function spinYaw(a, k) {
 }
 
 // ---- posture ("Haltung") tuning, shared by everyone
-export const DEFLECT_WINDOW = 0.22;     // seconds after raising the guard in which a block is a deflection
+export const DEFLECT_WINDOW = 0.3;      // seconds after raising the guard in which a block is a deflection
 export const POSTURE = {
   block: 0.34,          // posture damage to the defender per blocked blow (× weapon postureDmg × speed factor)
   deflected: 0.32,      // posture damage to the attacker when deflected
