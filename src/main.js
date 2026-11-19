@@ -597,6 +597,7 @@ class Game {
       if (strong) { this.callout('STARKE ABWEHR!', point, 'parry'); this.ctl.flickX = 0; this.shake = Math.max(this.shake, 0.55); }
       if (A.brain) A.brain.onParried();
       else { this.ctl.runner.cancel(); this.ctl.buffer = 0; }
+      D.guardRecoil(_a.copy(away).negate(), Math.min(1.3, impact), false);
       this.effects.sparksAt(point, 36, 1.6);
       this.effects.impact(point, 1.3);
       this.audio.deflect();
@@ -632,7 +633,10 @@ class Game {
       if (wrongSide && s > 3) this.callout('FALSCHE SEITE', point, 'small');
       const broke = D.addPosture(POSTURE.block * impact);
       A.posture = Math.min(A.postureMax * 0.95, A.posture + 0.04);
-      D.stagger(_a.copy(away).multiplyScalar(-(0.3 + impact * 0.5)), point, 0.03 * impact, 0.15);
+      D.stagger(_a.copy(away).multiplyScalar(-(0.4 + impact * 0.6)), point, 0.03 * impact, 0.15);
+      D.guardRecoil(_a.copy(away).negate(), Math.min(1.3, impact * (crush ? 1.3 : 1)), true);
+      // his own blade takes the blow too
+      if (D.weapon?.attached) { _cv.set(-away.x, -0.35, -away.z).scale(D.weapon.body.mass * (1 + s * 0.22), _cv); D.weapon.body.applyImpulse(_cv); }
       this.effects.sparksAt(point, 10 + s, 0.9);
       this.audio.clank(0.5 + s / 14, 0.9);
       this.addHitStop(0.03);

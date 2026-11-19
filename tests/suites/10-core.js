@@ -489,6 +489,30 @@ check('Echte Bilder werden gezeichnet', info.calls > 0 && info.triangles > 1000,
   K.add('KeyW'); press('Space'); step(10); press('ShiftLeft'); step(120); K.clear();
   check('Salto im Lauf: landet auf den Füßen', P.state === 'active' && !P.airborne && P.rollT === 0, [P.state, P.airborne]);
 
+  // a blow on the guard: the hands give, the knees take it, and it all comes back
+  {
+    fresh(0, 8); const e = dummy('ronin', V(0, 0, 6.4)); step(10);
+    e.intent.mode = 'parry'; const before = e.posture;
+    g.guardHit(e, P, P.weapon, e.getHeadPos(), 9);
+    let kick = 0, dip = 0, shake = e.life.shake;
+    for (let f = 0; f < 30; f++) { step(1); kick = Math.max(kick, e.guardKick.length()); dip = Math.max(dip, e.life.land); }
+    step(90);
+    check('Die Deckung gibt unter dem Schlag nach und federt zurück', e.posture > before && kick > 0.03 && kick <= 0.3 && dip > 0.005 && shake > 0.3 && e.guardKick.length() < 0.005 && e.life.shake === 0 && sane() === '', [kick, dip, shake, e.guardKick.length()]);
+    P.goRagdoll(null, null, false); P.guardRecoil(V(0, 0, 1), 1, true);
+    check('… am Boden gibt es nichts zu federn', P.guardKickV.length() === 0);
+    fresh(0, 8);
+  }
+  // an opponent's guard goes where the cut comes from
+  {
+    fresh(0, 8); const e = solo('ronin', V(0, 0, 6.3)); const upd = ctl.update; ctl.update = () => {};
+    const hold = (atk, n) => { let y = 0; for (let f = 0; f < n; f++) { P.attackPhase = 'wind'; P.atk = atk; e.brain.blockT = 1; e.brain.recoilT = 0; e.staggerT = 0; step(1); y = e.intent.hand.y; } return y; };
+    step(20);
+    const mid = hold({ thrust: true }, 50), low = hold({ low: true }, 50), mode = e.intent.mode;
+    ctl.update = upd; P.attackPhase = null; P.atk = null;
+    check('Gegner führen die Deckung dem Hieb entgegen: tief gegen die Beine', mode === 'parry' && low < mid - 0.15 && mid > 0.3 && sane() === '', [mid, low, mode]);
+    solo(null); fresh(0, 8);
+  }
+
   // knocked down, the chest is its own size again; back up, everything still holds
   P.goRagdoll(null, null, false); const flat = P.parts.torso.scale.x;
   step(30); fresh(0, 8); step(30);

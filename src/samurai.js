@@ -229,10 +229,12 @@ export class Samurai {
     this.gaitPhase = Math.random() * 6;
     // what makes a standing figure look alive: breath, where the eyes go, how the weight sits, how a landing is caught
     this.life = {
-      seed: Math.random() * 100, breath: Math.random() * 6, effort: 0, gs: 0,
+      seed: Math.random() * 100, breath: Math.random() * 6, effort: 0, gs: 0, shake: 0,
       headYaw: 0, headPitch: 0, gazeT: 0, gaze: null, glance: 0, glanceTo: 0, glanceT: rand(1, 4),
       land: 0, landV: 0, turn: 0,
     };
+    this.guardKick = new THREE.Vector3();    // the hands driven back by a blow on the guard (character-local), sprung
+    this.guardKickV = new THREE.Vector3();
     this.tired = 0;              // 0 fresh .. 1 out of breath (the controller says so)
     this.gaze = null;            // whom the controller wants looked at (else: the nearest opponent)
     this.flipped = false;        // one somersault per jump
@@ -361,11 +363,17 @@ export class Samurai {
     _m4.makeBasis(_x, _y, _z);
     const wt = this.weaponTarget;
     wt.quat.setFromRotationMatrix(_m4);
+    const gk = this.guardKick;
+    if (gk.lengthSq() > 1e-7) {
+      // driven back by a blow: the hands give, the blade is knocked over a little
+      hand.add(gk);
+      wt.quat.premultiply(T.q3.setFromEuler(T.eul.set(gk.z * 1.6 - gk.y * 1.2, 0, -gk.x * 2.2, 'YXZ')));
+    }
     // hands are never still: they ride the steps, the breath, and shake a little when the strength goes
     const lf = this.life;
     if (lf && !this.attackPhase && (it.mode === 'guard' || it.mode === 'parry') && this.brokenT <= 0) {
       const k2 = it.mode === 'guard' ? 1 : 0.4, g = lf.gs * k2, ph = this.gaitPhase, t = this.game.time ?? 0;
-      const br = Math.sin(lf.breath - 0.5) * (1 + 2 * lf.effort), jit = (0.25 + lf.effort) * k2;
+      const br = Math.sin(lf.breath - 0.5) * (1 + 2 * lf.effort), jit = (0.25 + lf.effort) * k2 + lf.shake * 2.2;
       hand.x += Math.sin(ph) * 0.03 * g + drift(t * 1.9, lf.seed) * 0.006 * jit;
       hand.y += -Math.cos(2 * ph) * 0.024 * g + br * 0.007 + drift(t * 2.3, lf.seed + 9) * 0.006 * jit - lf.land * 0.5;
       hand.z += Math.cos(ph) * 0.03 * g;
@@ -416,6 +424,16 @@ export class Samurai {
     this.kickCd = Math.max(0, this.kickCd - dt);
     this.slideT = Math.max(0, this.slideT - dt);
     this.rollT = Math.max(0, this.rollT - dt);
+    {
+      // the guard gives under a blow and comes back, a little past where it was
+      const gk = this.guardKick, gv = this.guardKickV, h = Math.min(dt, 1 / 30);
+      if (gk.lengthSq() + gv.lengthSq() > 1e-8) {
+        gv.x += (-gk.x * 150 - gv.x * 13) * h; gv.y += (-gk.y * 150 - gv.y * 13) * h; gv.z += (-gk.z * 150 - gv.z * 13) * h;
+        gk.addScaledVector(gv, h);
+        if (gk.lengthSq() > 0.09) gk.setLength(0.3);
+      }
+      this.life.shake = Math.max(0, this.life.shake - dt * 1.8);
+    }
     this.skidT = Math.max(0, this.skidT - dt);
     this.stuckT = Math.max(0, this.stuckT - dt);
     if (this.hang) { this.hang.t += dt; if (this.hang.t > 4 || this.staggerT > 0.2) this.letGo(); }
@@ -434,7 +452,7 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : 0.07;
+    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
     this.crouch += (sit - this.crouch) * dampFactor(9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
@@ -738,7 +756,8 @@ export class Samurai {
     this.intent.yaw = yaw;
     this.state = 'active';
     this.flipped = false; this.feet.R.set = this.feet.L.set = false;
-    this.life.land = this.life.landV = this.life.turn = 0;
+    this.life.land = this.life.landV = this.life.turn = this.life.shake = 0;
+    this.guardKick.set(0, 0, 0); this.guardKickV.set(0, 0, 0);
     this.dead = false;
     this.inj.reset();
     this.clearWounds();
@@ -1396,6 +1415,29 @@ export class Samurai {
     lf.headYaw += (yaw - lf.headYaw) * kh;
     lf.headPitch += (pitch - lf.headPitch) * kh;
     lf.glance += (lf.glanceTo - lf.glance) * dampFactor(5, dt);
+  }
+
+  /**
+   * A blow landed on the guard. The hands are driven back along it, the body rocks, the knees give, the head
+   * ducks; all of it springs back. `dirWorld`: the way the blow travels, `force` 0..1.3, `held`: blocked, not deflected.
+   */
+  guardRecoil(dirWorld, force, held = true) {
+    if (this.state !== 'active') return;
+    const yq = this.yawQuat();
+    T.fwd.set(0, 0, -1).applyQuaternion(yq); T.right.set(1, 0, 0).applyQuaternion(yq);
+    const f = dirWorld.x * T.fwd.x + dirWorld.z * T.fwd.z, r = dirWorld.x * T.right.x + dirWorld.z * T.right.z;
+    const v = (held ? 1.1 + 1.7 * force : 0.5 + 0.5 * force) * (0.85 + Math.random() * 0.3);
+    // (local z points backwards)
+    this.guardKickV.x += r * v + (Math.random() - 0.5) * 0.3;
+    this.guardKickV.y += -(0.25 + 0.35 * Math.random()) * v + (dirWorld.y || 0) * v * 0.5;
+    this.guardKickV.z += -f * v;
+    const lf = this.life;
+    lf.shake = Math.min(1, lf.shake + (held ? 0.5 + 0.5 * force : 0.25));
+    if (held) {
+      lf.landV += 0.35 + 0.55 * force;
+      lf.headPitch -= 0.1 + 0.14 * force;
+      if (this.flinchT <= 0.1) { this.flinchT = 0.3; this.flinchP = -f * (0.05 + 0.1 * force); this.flinchR = -r * (0.05 + 0.1 * force); }
+    }
   }
 
   /** A somersault in mid-air, once per jump: a little more height and carry, and hard to hit while it turns. */

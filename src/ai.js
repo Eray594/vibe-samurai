@@ -6,6 +6,7 @@ import { pick } from './roster.js';
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
 const _h = new THREE.Vector3();
+const _q = new THREE.Quaternion();
 const _me = new THREE.Vector3();
 const _a = new THREE.Vector3();
 const _r = new THREE.Vector3();
@@ -279,6 +280,9 @@ export class Brain {
         this.comboLeft = 0;
         const tip = tw.worldPoint(tw.tipLocal, _h).sub(me).applyQuaternion(k.yawQuat().clone().invert());
         this.blockSide = tip.x >= 0 ? 1 : -1;
+        this.blockH = 0; this.blockAge = 0;
+        this.blockLag = rand(0.02, 0.1) * (1.4 - this.blockSkill);       // nobody's hands are up at once
+        this.blockQuirk = rand(-1, 1);                                    // and nobody holds it the same way twice
       }
     }
 
@@ -297,10 +301,25 @@ export class Brain {
 
     if (this.blockT > 0) {
       it.mode = 'parry';
-      const s = this.blockSide, bp = this.pose;
-      bp.hand.set(0.12 * s, 0.42, -0.4);
-      bp.dir.set(-0.85 * s, 0.5, -0.15).normalize();
-      this.runner.rest(dt, it, bp, 24);
+      const bp = this.pose, q = this.blockQuirk || 0;
+      this.blockAge = (this.blockAge || 0) + dt;
+      // the guard goes where the cut is coming from: across to its side, up under a high one, down for the legs
+      let high = this.blockH || 0;
+      if (tw?.attached && (tgt.attackPhase === 'wind' || tgt.attackPhase === 'strike')) {
+        const tip = tw.worldPoint(tw.tipLocal, _h).sub(me).applyQuaternion(_q.copy(k.yawQuat()).invert());
+        if (Math.abs(tip.x) > 0.18 && !tgt.atk?.thrust) this.blockSide = tip.x > 0 ? 1 : -1;
+        const want = tgt.atk?.low ? -1 : tgt.atk?.thrust ? 0 : clamp((tip.y - 0.45) / 0.5, -0.6, 1);
+        high += (want - high) * dampFactor(10, dt);
+        this.blockH = high;
+      }
+      const s = this.blockSide, up = Math.max(high, 0), down = Math.max(-high, 0);
+      // settled, the guard is carried, not frozen: it rides the breath and eases a little between blows
+      const ease = Math.sin(this.blockAge * 5.2 + k.id) * 0.012 + Math.sin(this.blockAge * 2.3 + q * 3) * 0.01;
+      bp.hand.set((0.12 + 0.03 * q) * s + ease * s, 0.42 + 0.2 * up - 0.3 * down + ease, -0.4 - 0.04 * up + 0.05 * down);
+      bp.dir.set((-0.85 + 0.3 * down) * s, 0.5 - 0.28 * up - 1.3 * down + 0.08 * q, -0.15 - 0.1 * up).normalize();
+      // the hands start a moment late, then come up fast; later corrections are calmer
+      const rate = this.blockAge < (this.blockLag || 0) ? 3 : this.blockAge < 0.22 ? 20 : 11;
+      this.runner.rest(dt, it, bp, rate);
       it.edgeHint = BLOCK_EDGE;
       it.power = 1.4;
     } else if (this.runner.busy) {
