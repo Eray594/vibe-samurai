@@ -137,9 +137,10 @@ check('Dōjō-Kauf', g.progress.buy('heal') && g.progress.has('heal') && ctl.max
 check('Dōjō-Kauf mitten im Lauf: die gewählte Verbesserung bleibt', g.perks.taken.length === 1 && JSON.stringify(g.perk) === JSON.stringify(perk0) && P.postureMax === post0 && P.speedMul === speed0 && P.inj.armor === armor0, [g.perks.taken, g.perk, perk0]);
 {
   // another outfit brings its own speed and armour, and the run's upgrades go on top of those, not away
+  // (the upgrade picked by chance further up may itself be Leichtfuß: then it counts twice)
   g.perks.picked.push({ name: 'Leichtfuß', apply: (x) => { x.player.speedMul *= 1.07; } }); g.perks.rebase();
   g.setPlayerSkin('samurai');
-  check('Skin-Wechsel mitten im Lauf: Verbesserungen bleiben erhalten', Math.abs(P.speedMul - 0.97 * 1.07) < 1e-9 && g.perks.taken.includes('Leichtfuß') && g.perks.taken.length === 2, [P.speedMul, g.perks.taken]);
+  check('Skin-Wechsel mitten im Lauf: Verbesserungen bleiben erhalten', Math.abs(P.speedMul - 0.97 * 1.07 ** g.perks.taken.filter((n) => n === 'Leichtfuß').length) < 1e-9 && g.perks.taken.includes('Leichtfuß') && g.perks.taken.length === 2, [P.speedMul, g.perks.taken]);
   g.setPlayerSkin('ronin'); g.perks.picked.pop(); g.perks.rebase();
 }
 g.refreshSkins(); g.setPlayerSkin('shogun'); check('Gesperrter Skin bleibt gesperrt', g.skin !== 'shogun', g.skin);
