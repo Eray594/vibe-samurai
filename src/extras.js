@@ -231,6 +231,7 @@ export class Perks {
     const own = (key) => !!g.progress?.has(key);       // bought in the dōjō: part of the base values
     g.perk = { dmg: 1, deflect: 1, kunai: own('kunai') ? 2 : 1, postureDmg: 1, lifesteal: false, iai: own('iai') ? 0.66 : 1 };
     this.taken = [];
+    this.picked = [];
     this.close();
     if (g.player) {
       const skin = SKINS[g.skin];
@@ -258,6 +259,7 @@ export class Perks {
     const p = this.options?.[i];
     if (!this.choosing || !p) return;
     p.apply(this.game);
+    this.picked.push(p);
     this.taken.push(p.name);
     this.game.callout(p.name.toUpperCase(), null, 'parry');
     this.game.audio.taiko?.(0.5);
@@ -265,6 +267,20 @@ export class Perks {
   }
 
   close() { this.choosing = false; this.ui.classList.remove('show'); }
+
+  /**
+   * The base values changed in the middle of a run (something bought in the dōjō, another outfit): work them
+   * out again and put this run's upgrades back on top. An offer that is open stays open.
+   */
+  rebase(gainHeal = false) {
+    const g = this.game, picked = this.picked, open = this.choosing, heals = g.ctl?.heals ?? 0;
+    this.reset();
+    for (const p of picked) p.apply(g);
+    this.picked = picked;
+    this.taken = picked.map((p) => p.name);
+    if (g.ctl) g.ctl.heals = Math.min(g.ctl.maxHeals, heals + (gainHeal ? 1 : 0));      // bandages used stay used
+    if (open) { this.choosing = true; this.ui.classList.add('show'); }
+  }
 
   update(dt) {
     if (!this.choosing) return;

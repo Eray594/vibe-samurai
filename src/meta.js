@@ -9,11 +9,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard' }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard', help: true }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map, help: this.help });
     this.apply();
   }
   apply() {
@@ -78,7 +78,7 @@ export class Progress {
     this.honor -= it.cost;
     this.owned.add(key);
     this.store();
-    this.game.perks.reset();          // base values include what is owned
+    this.game.perks.rebase(key === 'heal');      // base values include what is owned; the run keeps its upgrades
     this.game.audio.taiko?.(0.6);
     return true;
   }
@@ -151,7 +151,8 @@ export class Menu {
   }
 
   refresh() {
-    const P = this.game.progress;
+    const P = this.game.progress, S = this.game.settings;
+    for (const key of ['blood', 'standoff', 'replay', 'aimCuts', 'sideGuard']) { const inp = this.el.querySelector('#set-' + key); if (inp) inp.checked = !!S[key]; }      // (P switches the replay from the keyboard)
     this.el.querySelector('#shop-honor').textContent = `· ${P.honor} Ehre · Rang ${P.rank}`;
     const A = this.game.ach;
     if (A) {

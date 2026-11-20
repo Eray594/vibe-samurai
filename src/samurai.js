@@ -250,7 +250,7 @@ export class Samurai {
 
     this.createCore(opts.position, this.intent.yaw);
     this.weapon = null;
-    this.setWeapon(opts.weapon ?? 'longsword');
+    this.setWeapon(opts.weapon ?? 'katana');
     this.ragBodies = null;
     this.ragConstraints = null;
     this.updateActivePose(0);
@@ -278,6 +278,7 @@ export class Samurai {
     snapPrev(b);
     this.core = b;
     this.airborne = false;
+    this.wallJumps = 0;          // on fresh feet (a fall that ended in the air must not use up the next jump's push-offs)
     this.yawActual = yaw;
     this.game.world.addBody(b);
   }
@@ -442,7 +443,9 @@ export class Samurai {
     if (this.state === 'active') {
       if (this.ghostT > 0) {
         this.ghostT -= dt;
-        this.core.collisionFilterMask = this.ghostT > 0 ? MASK.PCORE & ~G.ECORE : MASK.PCORE;
+        // (by side: a second player rushing through must not come out of it with the first player's collision rules)
+        const own = this.team === 0 ? MASK.PCORE : MASK.ECORE, foe = this.team === 0 ? G.ECORE : G.PCORE;
+        this.core.collisionFilterMask = this.ghostT > 0 ? own & ~foe : own;
       }
       if (this.kickT > 0) {
         this.kickT -= dt;

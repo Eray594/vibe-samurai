@@ -132,7 +132,16 @@ press('Digit2'); step(3); check('Verbesserung gewählt', g.perks.taken.length ==
 check('Nächste Welle beginnt', g.wave === 2 && g.livingEnemies.length > 0, g.wave);
 check('Ehre für Besiegte', g.progress.honor > 0, g.progress.honor);
 g.progress.earn(2000);
-check('Dōjō-Kauf', g.progress.buy('heal') && g.progress.has('heal') && ctl.maxHeals === 4, ctl.maxHeals);
+const perk0 = { ...g.perk }, post0 = P.postureMax, speed0 = P.speedMul, armor0 = P.inj.armor, medic = g.perks.taken.includes('Feldscher') ? 2 : 0;
+check('Dōjō-Kauf', g.progress.buy('heal') && g.progress.has('heal') && ctl.maxHeals === 4 + medic, ctl.maxHeals);
+check('Dōjō-Kauf mitten im Lauf: die gewählte Verbesserung bleibt', g.perks.taken.length === 1 && JSON.stringify(g.perk) === JSON.stringify(perk0) && P.postureMax === post0 && P.speedMul === speed0 && P.inj.armor === armor0, [g.perks.taken, g.perk, perk0]);
+{
+  // another outfit brings its own speed and armour, and the run's upgrades go on top of those, not away
+  g.perks.picked.push({ name: 'Leichtfuß', apply: (x) => { x.player.speedMul *= 1.07; } }); g.perks.rebase();
+  g.setPlayerSkin('samurai');
+  check('Skin-Wechsel mitten im Lauf: Verbesserungen bleiben erhalten', Math.abs(P.speedMul - 0.97 * 1.07) < 1e-9 && g.perks.taken.includes('Leichtfuß') && g.perks.taken.length === 2, [P.speedMul, g.perks.taken]);
+  g.setPlayerSkin('ronin'); g.perks.picked.pop(); g.perks.rebase();
+}
 g.refreshSkins(); g.setPlayerSkin('shogun'); check('Gesperrter Skin bleibt gesperrt', g.skin !== 'shogun', g.skin);
 g.settings.set('blood', false); check('Einstellung: Blut aus', g.effects.noBlood === true); g.settings.set('blood', true);
 g.menu.toggle(true); check('Menü öffnet mit Dōjō-Angeboten', g.menu.open && document.querySelectorAll('#shop .item').length === 7); g.menu.toggle(false);
@@ -163,6 +172,14 @@ g.setMode('versus'); step(20); const Q = g.versus.p2;
 check('2 Spieler: Spieler 2 ist da', !!Q && g.npcs.length === 1);
 const qz = Q.core.position.z; K.add('ArrowUp'); step(40); K.clear(); K.add('Comma'); step(8);
 check('2 Spieler: Pfeiltasten und Hieb steuern Spieler 2', Math.abs(Q.core.position.z - qz) + Math.abs(Q.core.position.x) > 0.1 && !!Q.ctl.runner.a, Q.core.position.z - qz); K.clear(); step(40);
+{
+  // the dash-cut lets a fighter pass through the other side for a moment; afterwards each is solid for the other again
+  const { MASK, G } = await import('/src/physics.js');
+  Q.ghostT = 0.05; P.ghostT = 0.05; step(1);
+  const through = !(Q.core.collisionFilterMask & G.PCORE) && !(P.core.collisionFilterMask & G.ECORE);
+  step(6);
+  check('2 Spieler: nach dem Durchschlag gelten für jeden wieder die Regeln seiner Seite', through && Q.core.collisionFilterMask === MASK.ECORE && P.core.collisionFilterMask === MASK.PCORE, [through, Q.core.collisionFilterMask, P.core.collisionFilterMask]);
+}
 Q.inj.wound('torso', 9, 'cut', 0); step(120);
 check('2 Spieler: Punkt für Spieler 1', g.versus.score.join(':') === '1:0', g.versus.score.join(':')); step(260);
 check('2 Spieler: neue Runde', !!g.versus.p2 && g.versus.p2 !== Q);

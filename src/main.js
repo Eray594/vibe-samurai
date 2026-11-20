@@ -401,8 +401,8 @@ class Game {
     if (skin.locked && !this.progress.has(key)) { this.ui.skin.value = this.skin; this.callout('IM DŌJŌ FREISCHALTEN', null, 'small'); return; }
     this.skin = key;
     this.player.setStyle(skin, skin.prot);
-    this.player.speedMul = skin.speed;
     this.player.dodge = this.dodgeFor(skin);
+    this.perks.rebase();              // speed and armour of the new outfit, with this run's upgrades back on top
     this.ui.skin.value = key;
     this.callout(up(skin.name), null, 'small');
   }
@@ -432,7 +432,7 @@ class Game {
 
   // sandbox conveniences: they would be cheating where a run is scored
   get sandbox() { return MODE_ORDER.includes(this.mode); }
-  callWave() { if (this.mode !== 'tutorial') this.spawnWave(); }
+  callWave() { if (this.sandbox) this.spawnWave(); }      // (in survival and the daily run it would count waves up without a fight)
   callAlly() { if (this.sandbox || this.mode === 'survival') this.spawnFighter(0); }
   cycleMode() { if (this.sandbox) this.setMode(MODE_ORDER[(MODE_ORDER.indexOf(this.mode) + 1) % MODE_ORDER.length]); }
 
@@ -1428,7 +1428,7 @@ class Game {
   }
 
   /** On a map with an edge: whoever has gone over it is lost. */
-  updateFalls() {
+  updateFalls(dt = 1 / 60) {
     if (!this.arena.abyss) return;
     for (const k of this.fighters) {
       if (k.fell || k.disposed) continue;
@@ -1454,7 +1454,7 @@ class Game {
     }
     // a word of warning when the player's heels are near an open edge
     const P = this.player;
-    this.edgeSayT = Math.max(0, (this.edgeSayT || 0) - 1 / 60);
+    this.edgeSayT = Math.max(0, (this.edgeSayT || 0) - dt);
     if (this.edgeSayT <= 0 && P.state === 'active' && !P.airborne && this.arena.nearEdge(P.core.position.x, P.core.position.z, 1.4)) {
       this.callout('VORSICHT, KANTE!', null, 'small');
       this.edgeSayT = 6;
@@ -1878,7 +1878,7 @@ class Game {
     this.ui = {
       doll: Object.fromEntries(['head', 'torso', 'armR', 'armL', 'legR', 'legL'].map((z) => [z, $('d-' + z)])),
       status: $('status'), deathCause: $('death-cause'), deathSub: $('death-sub'), stance: $('stance-label'),
-      weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), death: $('death'),
+      weapon: $('weapon-label'), kills: $('kills'), wave: $('wave'), prompt: $('prompt'), help: $('help'), helpOpen: $('help-open'), death: $('death'),
       posture: $('posture-fill'), postureBox: $('posture'), tools: $('tools'), mode: $('mode-label'), skin: $('skin-select'),
       type: $('enemy-type'), labels: $('labels'), reticle: $('reticle'), kanji: $('kanji'), flash: $('flash'),
       slow: $('btn-slow'), callouts: $('callouts'), weather: $('weather-label'), quality: $('quality-label'), rank: $('rank-label'), stamina: $('stamina-fill'), staminaBox: $('stamina'),
@@ -1901,6 +1901,9 @@ class Game {
     btn('btn-menu', () => this.menu.toggle());
     btn('btn-main', () => this.openMainMenu());
     btn('btn-quality', () => this.callout('GRAFIK: ' + up(this.quality.cycle()), null, 'small'));
+    btn('help-close', () => this.setHelp(false));
+    btn('help-open', () => this.setHelp(true));
+    this.setHelp(this.settings.help !== false);
 
     const wb = $('weapon-buttons');
     WEAPON_ORDER.forEach((key, i) => {
@@ -1930,6 +1933,14 @@ class Game {
     }
     sel.value = this.skin;
   }
+
+  /** The panel that lists the controls: shown, or put away behind a small chip. The choice is kept. */
+  setHelp(show) {
+    this.ui.help.classList.toggle('hidden', !show);
+    this.ui.helpOpen.classList.toggle('hidden', show);
+    if (this.settings.help !== show) this.settings.set('help', show);
+  }
+  toggleHelp() { this.setHelp(this.ui.help.classList.contains('hidden')); }
 
   nextWeather() {
     this.weather.next();
@@ -1993,7 +2004,7 @@ class Game {
     }
     if (p.has('KeyZ')) this.toggleSlowmo();
     if (p.has('KeyN')) { this.audio.music = !this.audio.music; this.callout(this.audio.music ? 'MUSIK AN' : 'MUSIK AUS', null, 'small'); }
-    if (p.has('KeyH')) this.ui.help.classList.toggle('hidden');
+    if (p.has('KeyH')) this.toggleHelp();
     if (p.has('KeyE')) {
       if (this.player.weapon && !this.player.weapon.attached) {
         const loose = this.player.state === 'active' ? this.looseWeaponNear(this.player.getPos(_a)) : null;
@@ -2167,7 +2178,10 @@ class Game {
     const frame = this.input.consume();
     const halted = this.mainMenu || this.paused;
     if (!halted) this.handleKeys(frame);
-    else if (this.started && frame.pressed.has('KeyI')) this.menu.toggle();      // the dōjō can still be closed again
+    else if (this.started) {
+      if (frame.pressed.has('KeyI')) this.menu.toggle();      // the dōjō can still be closed again
+      if (frame.pressed.has('KeyH')) this.toggleHelp();       // and the controls panel put away or fetched back
+    }
     this.front.update();
 
     let target = this.slowmo ? 0.3 : 1;
@@ -2218,7 +2232,7 @@ class Game {
       }
       for (const h of this.horses) h.update(dt);
       this.updateThrown(dt);
-      this.updateFalls();
+      this.updateFalls(dt);
       this.updateSmoke(dt);
       this.fire.update(dt);
     } else if (frame.lmbPressed && !this.ctl.free) {

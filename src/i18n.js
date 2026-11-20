@@ -3,7 +3,7 @@
 import { EN, EN_PARTS } from './lang-en.js';
 
 const NUM = /\d+(?:[.:,]\d+)*/g;
-const SPLIT = /(\s+[·—]\s+|:\s+)/;
+const SPLIT = /(\s+[·—]\s+)/, COLON = /(:\s+)/;
 const cache = new Map();
 // every entry also in capitals: callouts shout what the menus say quietly
 const UP = new Map();
@@ -22,6 +22,18 @@ function lookup(core) {
   return en.replace(/#/g, () => nums[i++] ?? '');
 }
 
+/**
+ * The same, for a piece that may open with a separator of its own (a display that continues another one:
+ * "· Spieler 1  2 : 1  Spieler 2"): listed with it, or else without.
+ */
+function find(piece) {
+  const en = lookup(piece);
+  if (en !== undefined) return en;
+  const m = piece.match(/^([·—]\s+)(.+)$/);
+  const rest = m ? lookup(m[2]) : undefined;
+  return rest === undefined ? undefined : m[1] + rest;
+}
+
 /** German text → English, or the text unchanged when there is nothing to say about it. */
 export function toEnglish(text) {
   const hit = cache.get(text);
@@ -30,19 +42,25 @@ export function toEnglish(text) {
   const core = text.slice(lead.length, text.length - tail.length);
   let out = text;
   if (core) {
-    let en = lookup(core);
+    let en = find(core);
     if (en === undefined) {
       // put together from pieces ("Welle 3 · 12 besiegt  —  neuer Rekord!"): piece by piece
-      const parts = core.split(SPLIT);
+      // first at the dots and dashes; a piece that is still unknown is tried again at its colon ("Rekord: Welle 3")
       let changed = false;
-      for (let i = 0; i < parts.length; i += 2) {
-        const piece = parts[i].trim();
-        if (!piece) continue;
-        let t = lookup(piece);
-        if (t === undefined) { let s = piece; for (const [de, e] of EN_PARTS) if (s.includes(de)) s = s.split(de).join(e); if (s !== piece) t = s; }
-        if (t !== undefined) { parts[i] = parts[i].replace(piece, () => t); changed = true; }
-      }
-      if (changed) en = parts.join('');
+      const each = (str, split, deeper) => {
+        const parts = str.split(split);
+        for (let i = 0; i < parts.length; i += 2) {
+          const piece = parts[i].trim();
+          if (!piece) continue;
+          let t = find(piece);
+          if (t === undefined && deeper) { const sub = each(parts[i], COLON, false); if (sub !== parts[i]) { parts[i] = sub; continue; } }
+          if (t === undefined && !deeper) { let s = piece; for (const [de, e] of EN_PARTS) if (s.includes(de)) s = s.split(de).join(e); if (s !== piece) t = s; }
+          if (t !== undefined) { parts[i] = parts[i].replace(piece, () => t); changed = true; }
+        }
+        return parts.join('');
+      };
+      const joined = each(core, SPLIT, true);
+      if (changed) en = joined;
     }
     if (en !== undefined) out = lead + en + tail;
   }

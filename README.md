@@ -38,7 +38,7 @@ und Safari nutzen dieselben Web-Standards).
    Dann zuerst die **Einführung**: sie führt in sechs Schritten durch Bewegen, Zuschlagen, Blocken,
    Abwehr und Todesstoß. Mit der Wahl wird die Maus gefangen; `Esc` **pausiert** (Weiter, Neustart,
    Hauptmenü) und gibt die Maus für die Leiste oben frei.
-2. Mit **WASD** bewegen, mit der **Maus** umsehen. `R` holt einen Gegner in den Hof, `Tab` erfasst ihn.
+2. Mit **WASD** bewegen, mit der **Maus** umsehen. `R` holt (im Freien Spiel) einen Gegner in den Hof, `Tab` erfasst ihn.
 3. **Linksklick** schlägt zu – mehrfach klicken ergibt eine Kombo, gedrückt halten einen schweren Hieb.
 4. **Rechtsklick** hält die Deckung. Wer sie erst im letzten Moment hebt, **wehrt ab**: die Klinge des
    Gegners fliegt zur Seite, und ein sofortiger Linksklick wird zum Konter.
@@ -46,7 +46,8 @@ und Safari nutzen dieselben Web-Standards).
    Gegners – erscheint der rote **斬**-Marker über ihm, beendet ein Linksklick den Kampf per Todesstoß.
 6. Selbst getroffen? `C` versorgt Wunden (3 Verbände), `Shift` weicht aus.
 7. Wenn das sitzt: im *Freien Spiel* mit `M` durch Duell → Gefecht → Chaos → 2 Spieler → Training
-   schalten, mit `1`–`6` andere Waffen probieren. `H` blendet die Hilfe im Spiel ein und aus.
+   schalten, mit `1`–`6` andere Waffen probieren. `H` blendet die Steuerungstafel ein und aus
+   (auch per Klick auf ✕, solange die Maus frei ist); das Spiel merkt sich die Wahl.
 
 ## Modi
 
@@ -157,14 +158,14 @@ Die vollständige Tastenbelegung:
 | V | „Freie Klinge": LMB halten und die Maus führt das Schwert direkt |
 | 1–6 | Katana · Wakizashi · Nōdachi · Yari · Naginata · Kanabō |
 | K | Skin: Rōnin · Samurai · Weißer Kranich · Schatten · Oni |
-| R · T | Gegner spawnen · Verbündeten rufen |
+| R · T | Gegner spawnen (Freies Spiel) · Verbündeten rufen |
 | M | Freies Spiel: Duell → Gefecht (immer +3) → **Chaos** → **2 Spieler** → **Training** |
 | 1–0 · Enter · J | Verteidigung: kaufen · Welle starten · Soldaten folgen / halten |
 | I | Menü: Einstellungen, Dōjō und Erfolge |
 | O | Training: nächste Übung |
 | U | Wetter / Tageszeit: Abenddämmerung → Nacht → Regen → Schnee |
 | P | Wiederholung des Todesstoßes an/aus |
-| Z · N · H | Zeitlupe · Musik · Hilfe ein/aus |
+| Z · N · H | Zeitlupe · Musik · Steuerungstafel ein/aus (`Y` und `Z` gelten nach Beschriftung, auch auf QWERTZ) |
 | RMB im Ausholen | **Finte**: nimmt den Hieb zurück; wer schon die Deckung hob, steht kurz offen |
 | Maus zum Hieb hin ziehen beim Abwehren | **Starke Abwehr**: bricht deutlich mehr Haltung |
 | Maus ziehen in der Deckung | Die Deckung hat eine **Seite**: die Klinge wandert nach links oder rechts (abschaltbar in den Einstellungen) |

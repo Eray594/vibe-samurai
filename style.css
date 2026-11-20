@@ -95,8 +95,13 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 }
 #help b { color: var(--ink); font-weight: normal; }
 #help .title { color: var(--ink); letter-spacing: 2px; margin-bottom: 3px; }
-#help .title span { color: var(--muted); font-size: 10px; }
-#help.hidden { display: none; }
+#help .title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+#help.hidden, #help-open.hidden { display: none; }
+/* the panel can be put away (H, or a click while the mouse is free) and fetched back from this chip */
+#help-close, #help-open { pointer-events: auto; cursor: pointer; }
+#help-close { padding: 0 6px; font-size: 12px; line-height: 1.5; letter-spacing: 0; }
+#help-open { position: absolute; right: 18px; bottom: 18px; font-size: 12px; opacity: 0.75; }
+#help-open:hover { opacity: 1; }
 
 /* name + posture above opponents' heads */
 #labels { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
@@ -192,7 +197,7 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 #death.show { display: flex; }
 
 @media (max-width: 1000px) {
-  #help { display: none; }
+  #help, #help-open { display: none; }
   button kbd { display: none; }
 }
 
@@ -387,12 +392,12 @@ body.touch #touch { display: block; }
 #touch .btns button.big { width: 152px; height: 64px; font-size: 17px; border-color: var(--blood); }
 #touch .btns button.on { background: rgba(120,40,30,0.75); border-color: var(--gold); }
 #touch .pause { position: absolute; right: 14px; top: 70px; width: 44px; height: 40px; font-weight: bold; }
-body.touch #help { display: none; }
+body.touch #help, body.touch #help-open { display: none; }
 body.touch #player-panel { transform: scale(0.8); transform-origin: left bottom; bottom: 170px; }
 @media (max-width: 760px) {
   #topbar { transform: scale(0.72); transform-origin: top center; }
   #def-shop { width: 250px; right: 6px; }
   #posture, #stamina { width: 200px; }
 }
-body.shopping #help { display: none; }
+body.shopping #help, body.shopping #help-open { display: none; }
 body.touch #score { left: 180px; bottom: 26px; }

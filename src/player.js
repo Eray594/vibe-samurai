@@ -9,6 +9,12 @@ const _p = new THREE.Vector3();
 const _q = new THREE.Vector3();
 const _bq = new THREE.Quaternion();
 
+/**
+ * Keys are read by where they sit (so WASD lies under the hand on any layout) — except Y and Z, which swap
+ * places between layouts (QWERTZ) and are meant by the letter printed on them.
+ */
+const codeOf = (e) => ((e.code === 'KeyY' || e.code === 'KeyZ') && /^[yz]$/i.test(e.key || '') ? 'Key' + e.key.toUpperCase() : e.code);
+
 export class Input {
   constructor(canvas) {
     this.canvas = canvas;
@@ -20,10 +26,11 @@ export class Input {
     this.locked = false;
     addEventListener('keydown', (e) => {
       if (['Backspace', 'Space', 'Tab'].includes(e.code)) e.preventDefault();
-      if (!this.keys.has(e.code)) this.pressed.add(e.code);
-      this.keys.add(e.code);
+      const code = codeOf(e);
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
     });
-    addEventListener('keyup', (e) => this.keys.delete(e.code));
+    addEventListener('keyup', (e) => { this.keys.delete(codeOf(e)); this.keys.delete(e.code); });
     addEventListener('blur', () => { this.keys.clear(); this.lmb = this.rmb = false; });
     addEventListener('mousemove', (e) => {
       if (!this.locked) return;

@@ -40,6 +40,23 @@ check('Nach der Wahl läuft das Spiel', g.time > t0 && !g.paused && !g.mainMenu,
 check('Im Überleben sind die Sandkasten-Knöpfe ausgeblendet', !visible($('btn-spawn')) && !visible($('btn-mode')) && !visible($('enemy-type')));
 tap('KeyM', 2);
 check('Taste M wechselt im Überleben nicht den Modus', g.mode === 'survival');
+{ const w = g.wave, n = g.npcs.length; tap('KeyR', 2); tap('KeyR', 2);
+  check('Taste R zählt im Überleben keine Wellen hoch', g.wave === w && g.npcs.length === n, [g.wave, g.npcs.length]); }
+
+// ---- the controls panel can be put away and fetched back, and stays that way
+{
+  const help = $('help'), chip = $('help-open'), saved = () => JSON.parse(localStorage.getItem('vibesamurai.settings') || '{}').help;
+  check('Steuerungstafel: anfangs offen, mit Knopf zum Schließen', visible(help) && !visible(chip) && !!$('help-close'));
+  tap('KeyH', 2);
+  check('Steuerungstafel: Taste H blendet sie aus, ein kleiner Knopf bleibt', !visible(help) && visible(chip) && saved() === false, saved());
+  chip.click();
+  check('Steuerungstafel: ein Klick auf den Knopf holt sie zurück', visible(help) && !visible(chip) && saved() === true);
+  $('help-close').click();
+  check('Steuerungstafel: ein Klick auf ✕ schließt sie', !visible(help) && visible(chip) && saved() === false);
+  g.input.locked = false; step(2); tap('KeyH', 1);
+  check('Steuerungstafel: Taste H wirkt auch in der Pause', g.paused && visible(help) && saved() === true);
+  g.input.locked = true; step(2);
+}
 
 // ---- the browser refused the mouse at first: a click into the picture still gets the game going
 {

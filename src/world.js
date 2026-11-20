@@ -37,7 +37,7 @@ export class Weather {
     this.snow = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 0.045, transparent: true, opacity: 0.8, depthWrite: false, fog: false }));
     for (const o of [this.rain, this.snow]) { o.frustumCulled = false; o.visible = false; scene.add(o); }
     this.t = 0;
-    this.trail = new Map();
+    this.trail = new WeakMap();
   }
 
   get name() { return this.nameOf(this.key); }

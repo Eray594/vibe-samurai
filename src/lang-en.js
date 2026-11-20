@@ -36,11 +36,11 @@ export const EN = {
   'Auto · # fps': 'Auto · # fps', 'Grafik': 'Graphics',
 
   // ---- HUD
-  'Unverletzt': 'Unhurt', 'Haltung': 'Posture', 'Ausdauer': 'Stamina', 'Besiegt': 'Defeated', 'Steuerung': 'Controls',
+  'Unverletzt': 'Unhurt', 'Haltung': 'Posture', 'Ausdauer': 'Stamina', 'Besiegt': 'Defeated', 'Steuerung': 'Controls', 'Steuerung ausblenden (H)': 'Hide the controls (H)', 'Steuerung einblenden (H)': 'Show the controls (H)',
   'Verbände #': 'Bandages #', 'Freie Klinge': 'Free blade', 'Ziel erfasst': 'target locked', '# Ehre': '# honour', '+# Ehre': '+# honour',
   'Welle #': 'Wave #', '# besiegt': '# defeated', '# im Hof': '# in the yard', '# Verbesserungen': '# upgrades',
   'neuer Rekord!': 'new record!', 'Neustart in # s': 'restart in # s', 'Neuer Versuch in # s …': 'Next try in # s …', 'Neuer Versuch …': 'Next try …',
-  'Spieler #': 'Player #', 'Spieler #  # : #  Spieler # (Pfeiltasten , . -': 'Player #  # : #  Player # (arrow keys , . -', 'oder Gamepad anschließen)': 'or plug in a gamepad)',
+  'Spieler #': 'Player #', 'Vom Pferd geholt!': 'Pulled off the horse!', 'Niedergeritten!': 'Ridden down!', 'Spieler #  # : #  Spieler # (Pfeiltasten , . -': 'Player #  # : #  Player # (arrow keys , . -', 'oder Gamepad anschließen)': 'or plug in a gamepad)',
   'Spieler #  # : #  Spieler #': 'Player #  # : #  Player #',
   'Chūdan': 'Chūdan', 'Gedan (tief)': 'Gedan (low)', 'Jōdan (hoch)': 'Jōdan (high)', 'Aufgeladen': 'Charged', 'Deckung': 'Guard', 'Hieb': 'Cut',
   'Iai – gespannt': 'Iai – drawn back', 'Klingenbindung': 'Blade bind', 'Im Griff': 'In your grip', 'An der Kante': 'On the ledge',
