@@ -200,6 +200,16 @@ export class Samurai {
     this.stuckT = 0;             // the blade is caught in something
     this.stumbleT = 0;
     this.techTried = false;      // one chance per knock-down to roll back to the feet
+    this.voicePitch = (opts.kind?.voice ?? 1) * rand(0.86, 1.2);      // every man has his own voice
+    this.cryAt = -9;             // when he last cried out (game time)
+    this.dashDir = new THREE.Vector3(0, 0, -1);
+    this.dashDur = 0.19;         // how long the step under way lasts in all
+    this.dashSp = 0;             // its speed (0: whoever started it steers it himself)
+    this.glideT = 0;             // coming out of a step: the feet catch the ground again gradually
+    this.groundCd = rand(1.5, 3);      // down but alive: until he can lash out again
+    this.groundWind = 0;
+    this.frozen = null;          // a dead body that has come to rest: its picture as a few merged meshes, no physics
+    this.deadT = 0;
 
     const { parts, mats } = buildParts(this.style);
     this.parts = parts;
@@ -296,6 +306,7 @@ export class Samurai {
     if (this.weapon) this.weapon.dispose();
     this.weapon = new Weapon(this.game, key, this);
     this.weapon.attach();
+    this.shadowOn = undefined;
     this.computeWeaponTarget(0);
     this.weapon.teleport(this.weaponTarget.pos, this.weaponTarget.quat);
     this.prevTargetPos = null;
@@ -455,8 +466,8 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
-    this.crouch += (sit - this.crouch) * dampFactor(9, dt);
+    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.dashT > 0 ? 0.2 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
+    this.crouch += (sit - this.crouch) * dampFactor(this.dashT > 0 ? 26 : 9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
     this.guardT = guardUp ? this.guardT + dt : 0;
@@ -559,7 +570,16 @@ export class Samurai {
     let ax = (mv.x * mob - b.velocity.x) * 14 * grip, az = (mv.z * mob - b.velocity.z) * 14 * grip;
     let maxA = 34 * (0.25 + 0.75 * bal) * (0.4 + 0.6 * legs) * (0.3 + 0.7 * grip);
     if (this.airborne) maxA *= 0.45;
-    if (this.dashT > 0) maxA = 0;
+    if (this.dashT > 0) {
+      maxA = 0;
+      if (this.dashSp > 0 && !this.airborne) {
+        // a step is a push, not a slide at one speed: quickest as the foot leaves the ground, easing into the next stride
+        const u = clamp(1 - this.dashT / this.dashDur, 0, 1), f = 1.28 - 0.8 * u * u;
+        b.velocity.x = this.dashDir.x * this.dashSp * f; b.velocity.z = this.dashDir.z * this.dashSp * f;
+      }
+    } else if (this.glideT > 0) { this.glideT -= h; maxA *= 0.55; }
+    // (after the step has had its say: nobody but the player dodges out over an open edge)
+    if (!this.isPlayer && !this.human && this.staggerT <= 0 && this.game.arena?.abyss) this.game.arena.holdBack(this);
     if (this.slideT > 0) { maxA = 0; b.velocity.x *= 1 - 1.1 * h; b.velocity.z *= 1 - 1.1 * h; }
     if (this.isPlayer || this.human) {
       // weight: turning hard out of a run the feet have to brake first
@@ -754,6 +774,8 @@ export class Samurai {
   }
 
   resetTo(pos, yaw = 0) {
+    this.thaw();
+    this.deadT = 0; this.groundWind = 0;
     if (this.state === 'ragdoll') this.removeRagdoll();
     else this.game.world.removeBody(this.core);
     this.createCore(pos, yaw);
@@ -801,7 +823,10 @@ export class Samurai {
     // lean into the dash
     b.angularVelocity.x += dir.z * -2.2;
     b.angularVelocity.z += dir.x * 2.2;
-    this.dashT = dg.time * wet;
+    this.dashT = this.dashDur = dg.time * wet;
+    this.dashDir.set(dir.x, 0, dir.z).normalize();
+    this.dashSp = sp;
+    this.glideT = 0.14;
     this.iframeT = dg.iframe;
     this.slideT = 0;
     this.dodgeKind = kind;
@@ -1171,6 +1196,7 @@ export class Samurai {
     }
     this.style = style;
     this.mats = mats;
+    this.shadowOn = undefined;
     if (armor != null) this.inj.armor = armor;
   }
 
@@ -1215,8 +1241,14 @@ export class Samurai {
     const wt = time * 7 + this.id * 1.7;
     const sway = Math.sin(wt) * 0.24 * wob, pitch = (0.16 + Math.sin(wt * 0.63) * 0.1) * wob + (this.skidT > 0 ? -0.3 * (this.skidT / 0.26) : 0);
     const fl = this.flinchT > 0 ? (this.flinchT / 0.34) ** 2 : 0;
-    const chestPitch = -this.lean - this.runLean - pitch - this.accLean.y + this.flinchP * fl - br * 0.009 * deep - lf.land * 1.3 - 0.03 * lf.effort;
-    const chestRoll = sway + this.accLean.x + this.flinchR * fl - pelRoll * 0.6 + drift(time * 0.38, lf.seed + 5) * 0.012 * still;
+    // a dodge shows in the whole body: it leans the way it goes and sinks into the push
+    let dashF = 0, dashR = 0;
+    if (this.dashT > 0 && this.rollT <= 0 && this.dashDur > 0) {
+      const k = Math.sin(Math.PI * clamp(1 - this.dashT / this.dashDur, 0, 1)) * 0.3;
+      dashF = (this.dashDir.x * T.fwd.x + this.dashDir.z * T.fwd.z) * k; dashR = (this.dashDir.x * T.right.x + this.dashDir.z * T.right.z) * k;
+    }
+    const chestPitch = -this.lean - this.runLean - pitch - this.accLean.y - dashF + this.flinchP * fl - br * 0.009 * deep - lf.land * 1.3 - 0.03 * lf.effort;
+    const chestRoll = sway + this.accLean.x - dashR + this.flinchR * fl - pelRoll * 0.6 + drift(time * 0.38, lf.seed + 5) * 0.012 * still;
     P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(chestPitch, chestYaw, chestRoll, 'YXZ')));
     const chest = (br * 0.5 + 0.5) * (0.014 + 0.03 * lf.effort);         // the ribs open with every breath
     P.torso.scale.set(1 + chest * 0.6, 1, 1 + chest);
@@ -1479,7 +1511,7 @@ export class Samurai {
 
   syncVisuals(dt) {
     if (this.state === 'active') this.updateActivePose(dt);
-    else {
+    else if (!this.frozen) {
       for (const n of PART_NAMES) {
         const b = this.ragBodies[n];
         if (!b) continue;
@@ -1501,7 +1533,72 @@ export class Samurai {
     for (const m of this.mats.flash) m.emissive.setRGB(e * e * 0.3, 0, 0);
   }
 
+  /**
+   * A dead body that has come to rest costs what a living fighter costs, for nothing: eleven bodies in the physics
+   * and two dozen draw calls. Frozen, it is taken out of the physics and drawn as one mesh per material, without a shadow.
+   */
+  freeze() {
+    if (this.frozen || this.state !== 'ragdoll' || !this.ragBodies) return false;
+    const world = this.game.world, scene = this.game.scene;
+    for (const c of this.ragConstraints) world.removeConstraint(c);
+    for (const n in this.ragBodies) world.removeBody(this.ragBodies[n]);
+    this.ragConstraints = [];
+    const buckets = new Map(), m3 = new THREE.Matrix3(), v = new THREE.Vector3();
+    for (const n of PART_NAMES) {
+      const part = this.parts[n];
+      if (!part.visible) continue;
+      part.updateMatrixWorld(true);
+      part.traverse((o) => {
+        if (!o.isMesh || !o.geometry.attributes.normal) return;
+        let b = buckets.get(o.material);
+        if (!b) buckets.set(o.material, b = { p: [], n: [], u: [], c: [], col: !!o.material.vertexColors });
+        const g = o.geometry, pos = g.attributes.position, nor = g.attributes.normal, uv = g.attributes.uv, col = g.attributes.color, idx = g.index;
+        m3.getNormalMatrix(o.matrixWorld);
+        const put = (i) => {
+          v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld); b.p.push(v.x, v.y, v.z);
+          v.fromBufferAttribute(nor, i).applyMatrix3(m3).normalize(); b.n.push(v.x, v.y, v.z);
+          b.u.push(uv ? uv.getX(i) : 0, uv ? uv.getY(i) : 0);
+          if (b.col) b.c.push(col ? col.getX(i) : 1, col ? col.getY(i) : 1, col ? col.getZ(i) : 1);
+        };
+        if (idx) for (let i = 0; i < idx.count; i++) put(idx.getX(i)); else for (let i = 0; i < pos.count; i++) put(i);
+      });
+      part.visible = false;
+    }
+    const meshes = [];
+    for (const [mat, b] of buckets) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
+      g.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3));
+      g.setAttribute('uv', new THREE.Float32BufferAttribute(b.u, 2));
+      if (b.col) g.setAttribute('color', new THREE.Float32BufferAttribute(b.c, 3));
+      const mesh = new THREE.Mesh(g, mat);
+      mesh.receiveShadow = true;
+      scene.add(mesh);
+      meshes.push(mesh);
+    }
+    this.frozen = meshes;
+    return true;
+  }
+
+  /** Undo `freeze` as far as the picture goes (the fighter is about to be rebuilt or removed). */
+  thaw() {
+    if (!this.frozen) return;
+    for (const m of this.frozen) { this.game.scene.remove(m); m.geometry.dispose(); }
+    this.frozen = null;
+    for (const n of PART_NAMES) this.parts[n].visible = !this.severed.has(n);
+  }
+
+  /** Whether this figure throws a shadow (far ones and the dead do not: a shadow is every draw call a second time). */
+  setShadow(on) {
+    if (this.shadowOn === on) return;
+    this.shadowOn = on;
+    const each = (o) => { if (!o.isMesh) return; if (o.userData.cast === undefined) o.userData.cast = o.castShadow; o.castShadow = on && o.userData.cast; };
+    for (const n of PART_NAMES) this.parts[n].traverse(each);
+    this.weapon?.mesh.traverse(each);
+  }
+
   dispose() {
+    this.thaw();
     if (this.state === 'ragdoll') this.removeRagdoll();
     else this.game.world.removeBody(this.core);
     for (const n of PART_NAMES) this.game.scene.remove(this.parts[n]);

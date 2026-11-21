@@ -25,8 +25,8 @@ const DUEL = "begin(); play('duel'); g.standoff.cancel(); step(40);";
 const GROUPS = [
   { key: 'yard', scenes: [
     ['menu', ''],
-    ['duel-hud', DUEL],
-    ['duel-nohelp', DUEL + 'g.setHelp(false); step(2);'],
+    ['duel-hud', DUEL + 'g.setHelp(true); step(2);'],
+    ['duel-nohelp', DUEL],
     ['yard-overview', DUEL + 'view(0,7,13, 0,1,0); step(2);'],
     ['fighters', DUEL + "fresh(0,1.6); dummy('samurai', V(0,0,-0.6)); step(30); view(2.2,1.5,2.6, 0,1.1,0.4); step(2);"],
     ['types', DUEL + "for (const e of [...g.npcs]) g.removeNpc(e); ['ashigaru','ronin','samurai','oni','daimyo','archer','gunner'].forEach((t, i) => { const e = g.spawnFighter(1, t, V(-4.5 + i * 1.5, 0, 0)); e.brain.update = () => {}; e.intent.yaw = Math.PI; }); fresh(0, 9); step(40); view(0,1.7,5.2, 0,1.1,0); step(2);"],
@@ -35,6 +35,12 @@ const GROUPS = [
     ['rain', DUEL + "g.weather.set('rain'); view(0,3,10, 0,1.2,0); step(3);"],
     ['snow', DUEL + "g.weather.set('snow'); view(0,3,10, 0,1.2,0); step(3);"],
     ['blood', DUEL + "fresh(0,1.6); const e = dummy('ronin', V(0,0,-0.4)); step(10); e.inj.wound('torso', 9, 'cut', 0); g.effects.blood(V(0,1.2,-0.4), V(0.3,0.2,1), 160, 1.4); step(70); view(2.5,2,3, 0,0.4,0); step(1);"],
+    ['dodge', DUEL + "for (const e of [...g.npcs]) g.removeNpc(e); fresh(0,2); K.add('KeyD'); tap('ShiftLeft', 1); step(5); K.clear(); view(0.6,1.5,6.2, 0.8,1,2); step(1);"],
+    ['roll', DUEL + "for (const e of [...g.npcs]) g.removeNpc(e); fresh(0,2); K.add('KeyD'); tap('ShiftLeft', 1); step(3); tap('ShiftLeft', 1); step(8); K.clear(); view(1.5,1.5,6.2, 1.8,0.9,2); step(1);"],
+    ['corpse-fresh', DUEL + "fresh(0,6); const e = dummy('samurai', V(0,0,0)); step(10); e.inj.wound('torso', 9, 'cut', 0); e.sever('fArmL', V(1,0,0), 4); step(200); view(2.6,1.7,2.6, 0,0.2,0); step(1);"],
+    ['corpse-frozen', DUEL + "fresh(0,6); const e = dummy('samurai', V(0,0,0)); step(10); e.inj.wound('torso', 9, 'cut', 0); e.sever('fArmL', V(1,0,0), 4); step(200); e.freeze(); e.setShadow(false); view(2.6,1.7,2.6, 0,0.2,0); step(1);"],
+    ['downed', DUEL + "fresh(0.8,0.2); const e = dummy('ronin', V(0,0,0)); step(10); e.sever('shinR', V(1,0,0), 4); e.inj.amputate('legR'); e.inj.bleeding = 0.3; step(260); P.core.position.set(e.ragBodies.torso.position.x + 0.7, 0.98, e.ragBodies.torso.position.z); e.groundCd = 0; step(22); view(2.8,1.6,2.8, 0.3,0.4,0); step(1);"],
+    ['crowd', "begin(); play('skirmish'); step(5); for (let i = 0; i < 9; i++) g.spawnFighter(1, ['ronin','samurai','ashigaru'][i % 3]); P.iframeT = 99; step(60); view(0,6,13, 0,1,0); step(2);"],
     ['survival-perks', "begin(); play('survival'); step(5);" + KILL],
     ['defense-build', "begin(); play('defense'); step(40);"],
     ['defense-wave', "begin(); play('defense'); step(10); g.defense.money = 900; for (const k of ['spear','archer','tower','spikes']) g.defense.buy(k); g.defense.startWave(); step(240);"],
@@ -48,7 +54,7 @@ const GROUPS = [
     ['english-hud', DUEL + "g.i18n.set('en'); step(2); await new Promise((r) => setTimeout(r, 30));"],
   ] },
   { key: 'small', size: [1024, 600], scenes: [
-    ['duel-hud', DUEL],
+    ['duel-hud', DUEL + 'g.setHelp(true); step(2);'],
     ['survival-perks', "begin(); play('survival'); step(5);" + KILL],
     ['defense-build', "begin(); play('defense'); step(40);"],
   ] },
@@ -157,7 +163,7 @@ const open = async ({ map, size = [1280, 720], touch }) => {
   console.error('Das Spiel ist nicht gestartet.'); finish(2);
 };
 const run = async (js) => {
-  const res = await evaluate(`(async () => { ${prelude}\n${extra}\nfree(); window.__seed(7); try { localStorage.clear(); } catch {}\n g.menu.toggle(false); if (g.i18n.lang !== 'de') g.i18n.set('de'); g.setHelp(true); if (g.slowmo) g.toggleSlowmo(); if (g.weather.key !== 'dusk' && g.mode !== 'daily') g.weather.set('dusk');\n const __r = await (async () => { ${js} })(); draw(); return __r === undefined ? null : __r; })()`);
+  const res = await evaluate(`(async () => { ${prelude}\n${extra}\nfree(); window.__seed(7); try { localStorage.clear(); } catch {}\n g.menu.toggle(false); if (g.i18n.lang !== 'de') g.i18n.set('de'); g.setHelp(false); if (g.slowmo) g.toggleSlowmo(); if (g.weather.key !== 'dusk' && g.mode !== 'daily') g.weather.set('dusk');\n const __r = await (async () => { ${js} })(); draw(); return __r === undefined ? null : __r; })()`);
   if (res.exceptionDetails) console.error('Fehler im Schnipsel:', res.exceptionDetails.exception?.description || res.exceptionDetails.text);
   return res.result?.value;
 };

@@ -111,6 +111,7 @@ export class Quality {
       }
     }
     g.lanternLights = L.lights;
+    g.shadowBudget = [0, 0, 3, 5, 7, 8][level];      // how many opponents throw a shadow (the nearest ones)
     g.arena.breakables.setLightBudget?.(L.lights);
     this.settleT = 1.5;
     this.goodT = this.badT = 0;

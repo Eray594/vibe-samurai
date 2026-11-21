@@ -51,6 +51,9 @@ const ZONE_KNOCK = { head: 1.25, torso: 1.0, armR: 0.5, armL: 0.5, legR: 0.6, le
 const STANCE = { guard: 'Chūdan', swing: 'Hieb', charge: 'Aufgeladen', parry: 'Deckung', free: 'Freie Klinge', iai: 'Iai – gespannt', bind: 'Klingenbindung', hold: 'Im Griff', hang: 'An der Kante' };
 const up = (t) => t.toUpperCase();
 const MAX_CORPSES = 10;
+const CORPSE_REST = 4;          // seconds a dead body lies before it is frozen (no physics, one mesh per material)
+const CORPSE_STAY = 26;         // ... and before it is taken away; sooner when the yard is filling up
+const LIMB_STAY = 22;
 const MAX_KUNAI = 12;
 const WALL_LIMIT = ARENA_R + 0.9;
 const WALL_FACE = 14.3;         // where the inside of the yard wall actually is
@@ -188,7 +191,11 @@ class Game {
     renderer.setAnimationLoop(() => this.frame());
   }
 
-  get fighters() { return [this.player, ...this.npcs]; }
+  /** Everyone in the yard. (Asked for many times a frame: the list is only made anew when someone came or went.) */
+  get fighters() {
+    if (this._fnpcs !== this.npcs || this._flen !== this.npcs.length) { this._fnpcs = this.npcs; this._flen = this.npcs.length; this._fighters = [this.player, ...this.npcs]; }
+    return this._fighters;
+  }
   get livingEnemies() { return this.npcs.filter((e) => e.team === 1 && !e.counted); }
 
   resize() {
@@ -808,8 +815,15 @@ class Game {
       this.effects.blood(c.point, dir, 3 + sev * 70 * bleedy, 1 + sev);
       if (kind !== 'blunt' || sev > 0.35) k.addWound(part, c.point, dir, sev, kind);
       if (kind !== 'blunt') w.bloodUp(0.15 + sev * 0.9);
-      this.audio.hit(0.3 + sev * 1.4, kind === 'blunt');
+      this.audio.hit(0.3 + sev * 1.4, kind === 'blunt', k.inj.armor > 0.45 && zone !== 'head');
       if (kind === 'cut' && sev > 0.2) this.audio.slash();
+      if (ev.includes('broken') || (kind === 'blunt' && sev > 0.5)) this.audio.bone?.(0.5 + sev);
+      // a voice only when it is bad: a grunt now and then, a scream for a deep wound, the last sound for some of the dying
+      if (!severed) {
+        if (ev.includes('dead')) { if (zone !== 'head') this.cryOut(k, 'death', 0.55); }
+        else if (sev > 0.45) this.cryOut(k, 'scream', 0.6);
+        else if (sev > 0.2 && Math.random() < 0.3 && this.time - k.cryAt > 1.6) { this.audio.voice?.('pain', 0.5 + sev); k.cryAt = this.time; }
+      }
       if (sev > 0.12) {
         this.fx.chroma = Math.max(this.fx.chroma, Math.min(1, sev * 1.5));
         if (sev > 0.3) this.effects.impact(c.point, sev * 2);
@@ -873,7 +887,9 @@ class Game {
       this.effects.impact(c.point, 1.5);
       this.audio.hit(1.4, false);
       this.audio.slash();
+      this.audio.bone?.(1);
       w.bloodUp(1);
+      if (severed !== 'head') { k.cryAt = -9; this.cryOut(k, 'scream'); }        // (this one always: nobody loses a limb in silence)
     }
     if (severed && byPlayer) this.slowT = Math.max(this.slowT, severed === 'head' ? 0.6 : 0.35);
     if (severed === 'head') { k.dead = true; if (!wasDead) { this.callout('ENTHAUPTET!', c.point, 'crit'); this.audio.taiko(0.8); if (k.team === 1) this.spreadFear(c.point, 9, 0.8); } }
@@ -887,6 +903,98 @@ class Game {
     else if (ev.includes('hurt')) this.callout(`${Z} verletzt`, c.point, 'small');
     else if (ev.includes('headWound')) this.callout('Kopfwunde', c.point, 'small');
     else if (ev.includes('severe')) this.callout(kind === 'thrust' ? 'Tiefer Stich' : 'Schwere Wunde', c.point, 'small');
+  }
+
+  // ------------------------------------------------------------------ voices
+  /**
+   * `k` cries out (see AudioFX.cry). Nobody cries twice in a breath, far-off voices are faint, and `chance`
+   * decides whether this moment gets a voice at all: most hits pass with the sound of the blow alone.
+   */
+  cryOut(k, kind, chance = 1) {
+    if (!k || k.isStructure || this.time - (k.cryAt ?? -9) < (kind === 'moan' ? 4 : 1.6) || Math.random() > chance) return false;
+    const at = k.parts.torso.position, cam = this.camera, e = cam.matrixWorld.elements;
+    const dx = at.x - cam.position.x, dz = at.z - cam.position.z, d = Math.hypot(dx, dz);
+    if (d > 26) return false;
+    const level = (k.isPlayer ? 0.8 : 1) / (1 + d * d * 0.012);
+    if (!this.audio.cry?.(kind, { pitch: k.voicePitch, level, pan: clamp((dx * e[0] + dz * e[2]) / Math.max(d, 1.5) * 0.8, -0.8, 0.8) })) return false;
+    k.cryAt = this.time;
+    return true;
+  }
+
+  // ------------------------------------------------------------------ the fallen, and those who are down but not out
+  /**
+   * The dead come to rest, are frozen (see Samurai.freeze) and after a while taken away, sinking into the ground.
+   * The living who cannot get up groan, and lash out at whoever stands over them.
+   */
+  updateFallen(dt) {
+    const many = this.corpses.length > 6 || this.npcs.length > 12;
+    for (let i = this.corpses.length - 1; i >= 0; i--) {
+      const k = this.corpses[i];
+      if (!k.dead || k.state !== 'ragdoll' || k.human) continue;
+      k.deadT += dt;
+      const pel = k.ragBodies?.pelvis;
+      if (!k.frozen && k.deadT > CORPSE_REST && pel && (k.fell || k.deadT > CORPSE_REST * 2.5 || Math.hypot(pel.velocity.x, pel.velocity.y, pel.velocity.z) < 0.25)) { k.freeze(); k.setShadow(false); }
+      const stay = k.fell ? 12 : many ? CORPSE_STAY * 0.45 : CORPSE_STAY;
+      if (k.deadT > stay && k !== this.replay.focus) {
+        // into the ground, then gone
+        if (!k.frozen) { k.freeze(); k.setShadow(false); }
+        const u = (k.deadT - stay) / 1.6;
+        if (k.frozen) for (const m of k.frozen) m.position.y = -u * u * 0.75;
+        if (k.weapon && !k.weapon.attached) k.weapon.mesh.visible = u < 0.5;
+        if (u >= 1) this.removeNpc(k);
+      }
+    }
+    for (let i = this.limbs.length - 1; i >= 0; i--) { const l = this.limbs[i]; l.t += dt; if (l.t > LIMB_STAY) this.removeLimb(l); }
+    if (this.mode === 'tutorial') return;
+    // down but alive
+    this.moanT = (this.moanT ?? 2) - dt;
+    let moaner = null, n = 0;
+    for (const k of this.npcs) {
+      if (k.state !== 'ragdoll' || k.dead || k.human || !k.ragBodies?.torso || k.inj.consciousness < 0.3) continue;
+      if (k.ragTime > 2.5 && (!k.inj.canStand || k.inj.shock > 0.25) && Math.random() < 1 / ++n) moaner = k;
+      this.groundStrike(k, dt);
+    }
+    if (this.moanT <= 0) { this.moanT = rand(2.5, 6); if (moaner) this.cryOut(moaner, 'moan'); }
+  }
+
+  /**
+   * A man on the ground with an arm left and an enemy standing over him: the arm comes up, and a moment later
+   * he cuts at the leg next to him. Step back (or kick him away) while the arm is up and it meets nothing.
+   */
+  groundStrike(k, dt) {
+    if (k.armless || k.ragTime < 2 || k.inj.canStand || this.mode === 'training') { k.groundWind = 0; return; }
+    const tp = k.ragBodies.torso.position;
+    let tgt = null, bd = 1.3;
+    for (const f of this.fighters) {
+      if (f.team === k.team || f.state !== 'active' || f.dead || f.mountH > 0 || f.airborne) continue;
+      const p = f.core.position, d = Math.hypot(p.x - tp.x, p.z - tp.z);
+      if (d < bd && Math.abs(f.groundY - (tp.y - 0.15)) < 0.8) { bd = d; tgt = f; }
+    }
+    const arm = k.ragBodies[k.offHanded ? 'fArmL' : 'fArmR'] || k.ragBodies.fArmL || k.ragBodies.fArmR;
+    if (k.groundWind > 0) {
+      k.groundWind -= dt;
+      if (arm) arm.velocity.y = Math.max(arm.velocity.y, 2.2);                 // the arm comes up: this is the warning
+      if (k.groundWind > 0) return;
+      k.groundCd = rand(3, 5);
+      if (!tgt || tgt.iframeT > 0) return;
+      const p = tgt.core.position, dx = p.x - tp.x, dz = p.z - tp.z, d = Math.hypot(dx, dz) || 1;
+      if (arm) { arm.velocity.x += dx / d * 5; arm.velocity.z += dz / d * 5; arm.velocity.y = -1; }
+      const zone = Math.random() < 0.5 ? 'legR' : 'legL', dir = new THREE.Vector3(dx / d, 0.1, dz / d);
+      const at = new THREE.Vector3(p.x - dx / d * 0.2, tgt.groundY + 0.3, p.z - dz / d * 0.2);
+      const raw = 0.3 * k.inj.vitality * (tgt.isPlayer ? this.diff.dmg * 0.8 : 1);
+      const { sev, ev } = tgt.inj.wound(zone, raw, 'cut', 1);
+      if (ev.includes('deflect')) { this.effects.sparksAt(at, 6, 0.6); this.audio.clank(0.3, 0.85); return; }
+      tgt.addWound(zone === 'legR' ? 'shinR' : 'shinL', at, dir, sev, 'cut');
+      tgt.flinch(zone, dir, sev); tgt.hitFlash = Math.min(1, sev * 2 + 0.3);
+      tgt.stagger(dir.clone().multiplyScalar(0.8), at, 0.12 + sev * 0.5, 0.35);
+      tgt.brain?.onHit?.(sev);
+      this.effects.blood(at, dir, 8 + sev * 60, 1);
+      this.audio.hit(0.3 + sev, false, tgt.inj.armor > 0.45);
+      if (tgt.isPlayer) { this.hurtFlash(sev * 70 + 8); this.callout('VOM BODEN GETROFFEN!', at, 'crit'); this.ctl.chain = 0; }
+      return;
+    }
+    k.groundCd -= dt;
+    if (tgt && k.groundCd <= 0) { k.groundWind = 0.55; this.cryOut(k, 'kiai', 0.5); }
   }
 
   // ------------------------------------------------------------------ finishing blow
@@ -933,6 +1041,7 @@ class Game {
     this.effects.blood(point, _c.set(-dir.x, 0.4, -dir.z), 80, 1.2);
     this.effects.gore(point, dir, 16);
     this.effects.impact(point, 2);
+    if (!headOff) this.cryOut(V, 'death', 0.7);
     A.weapon.bloodUp(1);
     this.audio.slash();
     this.audio.hit(1.4, def.type === 'club');
@@ -1227,7 +1336,7 @@ class Game {
         const wb = f.weapon.body;
         wb.velocity.set(0, -6, 0);
         k.core.velocity.x *= 0.25; k.core.velocity.z *= 0.25;
-        k.dashT = 0.08;
+        k.dashT = 0.08; k.dashSp = 0;
         k.iframeT = Math.max(k.iframeT, 0.5);
         ctl.counterT = 0.95;
         this.effects.sparksAt(point, 26, 1.2); this.effects.impact(point, 1.6); this.effects.dust(point.clone().setY(0), 10);
@@ -1452,7 +1561,7 @@ class Game {
       if (!wasDead) {
         k.inj.cause = k.inj.cause || 'In den Abgrund gestürzt';
         this.onFighterDeath(k, at);
-        this.audio.voice?.('pain', 0.9);
+        k.cryAt = -9; this.cryOut(k, 'fall');
         if (k.team === 1) {
           this.callout('IN DEN ABGRUND!', at, 'crit');
           this.slowT = Math.max(this.slowT, 0.35);
@@ -1565,6 +1674,25 @@ class Game {
     }
   }
 
+  /**
+   * Who throws a shadow. Every figure with one is drawn twice, so only those nearest the camera get it;
+   * how many depends on the graphics quality.
+   */
+  updateShadows(dt) {
+    this.shadowT = (this.shadowT || 0) - dt;
+    if (this.shadowT > 0) return;
+    this.shadowT = 0.35;
+    const cam = this.camera.position, budget = this.shadowBudget ?? 6, list = [];
+    for (const k of this.npcs) {
+      if (k.frozen) continue;
+      const p = k.parts.torso.position;
+      list.push([(p.x - cam.x) ** 2 + (p.z - cam.z) ** 2, k]);
+    }
+    list.sort((a, b) => a[0] - b[0]);
+    list.forEach(([, k], i) => k.setShadow(i < budget));
+    this.player.setShadow(true);
+  }
+
   /** Run `fn` after `t` seconds of game time. */
   after(t, fn) { this.timers.push({ t, fn }); }
 
@@ -1589,7 +1717,8 @@ class Game {
       k.momentum = fwd >= 0 ? 1 + Math.min(0.3, fwd * 0.05) : Math.max(0.8, 1 + fwd * 0.08);
     }
     if (k.isPlayer) this.tutorial.event('cut');
-    if (heavy) this.audio.voice?.('effort', k.isPlayer ? 1 : 0.6);
+    if (k.isPlayer) { if (heavy) this.audio.voice?.('effort', 1); }
+    else if (heavy || Math.random() < 0.1) this.cryOut(k, 'kiai');
     if (k.isPlayer) { if (heavy) { this.audio.whooshBurst(0.7); this.fx.fovKick = Math.max(this.fx.fovKick, 0.6); } }
     else if (k.getPos(_a).distanceTo(this.player.getPos(_b)) < 7) this.audio.whooshBurst(0.22);
   }
@@ -1745,6 +1874,7 @@ class Game {
   }
 
   onFighterDeath(k, point) {
+    if (!point) this.cryOut(k, 'death', 0.6);      // (bled out or burnt, not cut down: the blow has its own voice)
     k.dead = true;
     const where = point || k.getHeadPos(_c);
     this.callout(up(k.inj.cause || 'Gefallen'), where, 'crit');
@@ -1810,6 +1940,7 @@ class Game {
 
   onFighterDown(k) {
     this.audio.thud(0.9);
+    if (k.weapon && !k.weapon.attached && !k.weapon.def.thrown) this.audio.clatter?.(0.7, k.weapon.def.mass > 2.5);
     const p = k.getPos(_a);
     this.effects.dust(p, 18);
     this.arena.stirPetals(p.x, p.z, 2.2);
@@ -2251,6 +2382,7 @@ class Game {
       this.updateThrown(dt);
       this.updateFalls(dt);
       this.updateSmoke(dt);
+      this.updateFallen(dt);
       this.fire.update(dt);
     } else if (frame.lmbPressed && !this.ctl.free) {
       this.ctl.buffer = 0.3;   // don't swallow a click during hit-stop
@@ -2306,6 +2438,7 @@ class Game {
     this.bleedOut(dt);
     this.updateRun(dt);
 
+    this.updateShadows(realDt);
     this.effects.update(dt);
     this.audio.update(dt, this);
     this.arena.update(realDt);

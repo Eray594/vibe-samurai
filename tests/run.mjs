@@ -29,7 +29,7 @@ const COVERS = {
   'defense.js': ['defense', 'fuzz', 'layout'], 'goals.js': ['goals', 'rules', 'menu'], 'meta.js': ['menu', 'goals', 'rules', 'core'],
   'front.js': ['menu', 'language', 'layout'], 'i18n.js': ['language', 'english'], 'lang-en.js': ['language', 'english'],
   'cliff.js': ['cliff'], 'cliffscape.js': ['cliff'], 'maps.js': ['cliff', 'menu'], 'extras.js': ['core', 'menu', 'rules', 'fuzz'],
-  'breakables.js': ['core', 'leaks', 'fuzz'], 'effects.js': ['core', 'rules', 'leaks'], 'audio.js': ['core'], 'perf.js': ['core', 'leaks'],
+  'breakables.js': ['core', 'leaks', 'fuzz'], 'mount.js': ['core', 'fuzz'], 'world.js': ['core', 'rules', 'human', 'fuzz'], 'effects.js': ['core', 'rules', 'leaks'], 'audio.js': ['core', 'human'], 'perf.js': ['core', 'leaks'],
 };
 const STYLE = ['layout', 'language', 'menu'];
 function changedWords() {

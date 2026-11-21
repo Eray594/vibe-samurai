@@ -177,6 +177,7 @@ export class Fire {
           s.inj.wound(Math.random() < 0.6 ? (Math.random() < 0.5 ? 'legR' : 'legL') : 'torso', 0.1, 'blunt', 0);
           s.hitFlash = 0.7;
           s.brain?.onHit?.(0.3);
+          g.cryOut?.(s, 'scream', 0.3);
           if (s.isPlayer) {
             g.hurtFlash(14);
             if (this.sayT <= 0) { g.callout('VERBRANNT!', null, 'crit'); this.sayT = 1.5; }

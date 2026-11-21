@@ -253,7 +253,7 @@ export class PlayerController {
       const a = this.runner.a, sp = clamp((d0 - 0.9) / (a.windDur + a.strikeDur * 0.5), minSp, 16);
       k.core.velocity.x = -Math.sin(this.faceYaw) * sp;
       k.core.velocity.z = -Math.cos(this.faceYaw) * sp;
-      k.dashT = 0.32; k.ghostT = 0.4; k.iframeT = 0.44;
+      k.dashT = k.dashDur = 0.32; k.dashSp = 0; k.ghostT = 0.4; k.iframeT = 0.44;
     }
   }
 
@@ -287,7 +287,7 @@ export class PlayerController {
     this.smokes = 2;
     this.iaiCharge = 0;
     this.iaiCd = 0;
-    this.stamina = 1; this.exhaustT = 0; this.plunge = null;
+    this.stamina = 1; this.exhaustT = 0; this.plunge = null; this.dodgeBuf = 0;
   }
 
   /** Called while the player is down: only the camera moves. */
@@ -415,7 +415,7 @@ export class PlayerController {
         if (k.dash(_v.set(-Math.sin(this.faceYaw), 0, -Math.cos(this.faceYaw)))) {
           k.core.velocity.x = -Math.sin(this.faceYaw) * sp;
           k.core.velocity.z = -Math.cos(this.faceYaw) * sp;
-          k.dashT = a.windDur + a.strikeDur * 0.5;
+          k.dashT = k.dashDur = a.windDur + a.strikeDur * 0.5; k.dashSp = 0;
         }
       }
     }
@@ -519,12 +519,17 @@ export class PlayerController {
       if (frame.lmbPressed) game.bind.push(k);
       return;
     }
-    if ((pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken) {
+    // a dodge asked for a moment too early (still recovering from the last step, a kick, a landing) is not lost:
+    // it is taken as soon as the feet are free
+    const shiftNow = (pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken;
+    this.dodgeBuf = shiftNow ? 0.24 : Math.max(0, (this.dodgeBuf || 0) - dt);
+    if (broken) this.dodgeBuf = 0;
+    if (shiftNow || this.dodgeBuf > 0) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();
       // in the air it is a somersault
-      if (k.airborne && !this.exhausted && k.flip(d)) { this.spend(0.08); game.audio.whooshBurst?.(0.5); game.onFlip?.(k); }
+      if (shiftNow && k.airborne && !this.exhausted && k.flip(d)) { this.spend(0.08); game.audio.whooshBurst?.(0.5); game.onFlip?.(k); this.dodgeBuf = 0; }
       // a tap is a step; a second tap right after it turns it into a roll; sideways with a target locked circles round him
-      const again = game.time - this.lastDodgeAt < 0.36 && k.dodgeKind !== 'roll' && k.dashT > -0.2;
+      const again = shiftNow && game.time - this.lastDodgeAt < 0.36 && k.dodgeKind !== 'roll';
       if (again) k.dashCd = 0;
       let pivot = 0;
       if (!again && moving && this.valid(this.lock)) {
@@ -535,12 +540,13 @@ export class PlayerController {
       if (!this.exhausted && k.dash(d, again ? 'roll' : 'step')) {
         if (this.runner.phase !== 'strike') this.runner.cancel();
         this.finisher = null;
+        this.dodgeBuf = 0;
         this.spend(again ? 0.1 : 0.16);
         this.lastDodgeAt = game.time;
         k.pivot = pivot ? { tgt: this.lock, sign: pivot } : null;
-        if (pivot) k.dodgeKind = 'pivot';
+        if (pivot) { k.dodgeKind = 'pivot'; k.dashSp = 0; }
         game.onDodge(k, d, this);
-      }
+      } else if (this.exhausted || k.airborne) this.dodgeBuf = 0;
     }
     if (k.pivot) {
       // circling: keep bending the dash round the target so it ends at his flank, still facing him

@@ -80,10 +80,10 @@ export const TYPES = {
 };
 // rank: who leads (the highest rank alive is the leader). courage: 0 = runs at the first head that rolls.
 // heavy: chance that an attack is a slow, guard-crushing blow that should be dodged, not blocked.
-Object.assign(TYPES.ashigaru, { rank: 1, courage: 0.3, heavy: 0 });
+Object.assign(TYPES.ashigaru, { rank: 1, courage: 0.3, heavy: 0, voice: 1.06 });
 Object.assign(TYPES.ronin, { rank: 2, courage: 0.6, heavy: 0.08 });
 Object.assign(TYPES.samurai, { rank: 3, courage: 0.9, heavy: 0.14 });
-Object.assign(TYPES.oni, { rank: 3, courage: 1, heavy: 0.4 });
+Object.assign(TYPES.oni, { rank: 3, courage: 1, heavy: 0.4, voice: 0.72 });      // voice: how deep (below 1) or high he sounds
 Object.assign(TYPES.daimyo, { rank: 5, courage: 1, heavy: 0.25 });
 Object.assign(TYPES, {
   archer: {

@@ -131,7 +131,7 @@ Die vollständige Tastenbelegung:
 | Taste | Aktion |
 |---|---|
 | WASD · Maus | bewegen (relativ zur Kamera) · Kamera |
-| Shift | Ausweichschritt (kurz unverwundbar) · gehalten: Sprint · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
+| Shift | Ausweichschritt (kurz unverwundbar; ein etwas zu früher Druck wird nachgeholt) · gehalten: Sprint · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
 | Shift in einen Stoß hinein | **Klinge niedertreten**: der Fuß landet auf der Waffe, die Haltung des Gegners leidet schwer |
 | Space | Sprung – Angriff in der Luft = Sturzhieb · an der Mauer nochmal Space: **Wandsprung** · im Sprint gegen die Mauer: höherer Sprung |
 | Space gegen das Podest | **Klettern**: über die Stufe geht es von selbst aufs Deck; vom Boden aus greifst du die Kante und hängst – Space zieht hoch, S lässt los |
@@ -256,6 +256,15 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
   kämpfen weiter. Wer den Schwertarm verliert, hebt die Waffe mit links auf und kämpft schwächer
   weiter; Schwerverletzte weichen zurück statt anzugreifen, halten sich die Bauchwunde und stehen
   langsamer auf. Eine gebrochene Haltung zwingt fast auf ein Knie.
+- **Am Boden ist nicht tot.** Wer ein Bein verliert oder nicht mehr stehen kann, lebt weiter: er kriecht
+  weg, stöhnt – und wer über ihm stehen bleibt, bekommt die Klinge ins Bein (der Arm hebt sich vorher:
+  Abstand nehmen oder wegtreten). Wer den Schwertarm verliert, schreit, holt die Waffe mit links und kämpft weiter.
+- **Stimmen.** Nicht jeder Treffer hat eine: Kratzer bleiben stumm, tiefe Wunden und abgetrennte Glieder
+  nicht. Jeder Kämpfer hat seine eigene Stimmlage; Sterbende, Stürzende und Brennende klingen verschieden.
+  Dazu Knochen, Rüstung gegen Stoff, und die Waffe, die auf den Stein fällt.
+- **Die Toten.** Eine Leiche, die zur Ruhe gekommen ist, kostet fast nichts mehr (keine Physik, wenige
+  Zeichenaufrufe, kein Schatten) und versinkt nach einer Weile im Boden – schneller, wenn der Hof voll ist.
+  Schatten werfen nur die Kämpfer, die der Kamera am nächsten sind (wie viele, hängt an der Grafikstufe).
 - **Rüstung.** Schnitte gleiten an lackierten Lamellen ab, Stiche finden Lücken, Wucht geht durch.
   Leichte Skins sind schneller, schwere halten mehr aus.
 - **Gore.** Saubere, harte Schnitte trennen Arme, Beine oder den Kopf ab; Stümpfe spritzen, Klingen
@@ -309,6 +318,7 @@ Hand an. Jede Suite (`tests/suites/*.js`) läuft auf einer frisch geladenen Seit
 | `30-defense` | Festung, Shop, Soldaten, Fallen, Türme, Wellen, Anführer, Niederlage, Aufräumen |
 | `40-goals` | Erfolge, Tagesaufgabe, Einführung |
 | `45-rules` | Regeln, die immer gelten: Tagesaufgabe gibt Waffe und Wetter vor, Verbesserung verfällt nicht, was „Fortschritt löschen“ löscht, Staub und Blut landen auf dem, was darunter ist |
+| `46-human` | Wer wann schreit, Weiterkämpfen ohne Arm, Hieb vom Boden, was aus den Toten wird, Ausweichen, Schatten-Budget, die neuen Stimmen |
 | `50-language-touch` | Englisch (auch: nirgends bleibt deutscher Text stehen), Touch-Steuerung |
 | `51-english-start` | Gespeicherte Sprache, Schwierigkeit und Rekorde beim Laden |
 | `60-cliff` | Die Karte Wolkengipfel: Zaun und offene Kanten, Absturz, Glocke, Fels, alle Modi, Kartenwahl im Hauptmenü |

@@ -284,7 +284,7 @@ export class AudioFX {
   }
 
   /** Weapon into a body: wet low thump, the smack, plates rattling (duller and heavier when blunt). */
-  hit(intensity = 1, blunt = false) {
+  hit(intensity = 1, blunt = false, armored = false) {
     const t = this.begin('hit', 0.03, 0.35);
     if (t === null) return;
     const I = clamp(intensity, 0.1, 1.5), bus = this.bus;
@@ -296,8 +296,44 @@ export class AudioFX {
     w.frequency.exponentialRampToValueAtTime(rand(450, 600), t + 0.13);
     this.grains(t + 0.008, 2, 0.012, 0.03, 0.1 * I, 0.016, 'bandpass', rand(1400, 2600), 3, bus);
     if (blunt) this.grains(t + 0.004, 2, 0.01, 0.025, 0.2 * I, 0.02, 'bandpass', rand(700, 1000), 2, bus);
+    if (armored) {
+      // plates and lacing take part of it: a short, dull ring and the rattle of the rows against each other
+      const f = rand(1500, 2300);
+      for (const [m, a, d] of [[1, 0.1, 0.07], [1.83, 0.06, 0.05], [2.9, 0.035, 0.035]]) this.osc('sine', f * m, t, t + d + 0.05).connect(this.env(t, a * I, 0.001, d)).connect(bus);
+      this.grains(t + 0.015, 4, 0.01, 0.03, 0.14 * I, 0.014, 'bandpass', rand(2600, 3800), 4, bus);
+    } else if (!blunt) {
+      // cloth and flesh: the slap of it, and cloth tearing
+      this.burst(t, 'bandpass', rand(700, 950), 1.2, 0.3 * I, 0.002, 0.06, bus);
+      if (I > 0.5) this.grains(t + 0.01, 3, 0.008, 0.02, 0.1 * I, 0.02, 'highpass', 3200, 0.7, bus);
+    }
     this.heat = Math.min(1, this.heat + 0.15);
-    if (I > 0.7 && Math.random() < 0.55) this.voice('pain', Math.min(1, I * 0.8));
+  }
+
+  /** A bone giving way: a dry crack, a second smaller one, and the dull knock under it. */
+  bone(intensity = 1) {
+    const t = this.begin('bone', 0.12, 0.25);
+    if (t === null) return;
+    const I = clamp(intensity, 0.2, 1.3), bus = this.bus;
+    this.burst(t, 'highpass', 1800, 0.7, 0.75 * I, 0.0006, 0.022, bus);
+    this.burst(t + rand(0.028, 0.05), 'bandpass', rand(2400, 3400), 2, 0.45 * I, 0.0006, 0.018, bus);
+    for (const f of [rand(520, 640), rand(980, 1250)]) this.osc('sine', f, t, t + 0.08).connect(this.env(t, 0.22 * I, 0.001, 0.035)).connect(bus);
+    this.thump(t, 150, 70, 0.05, 0.4 * I, 0.08, bus);
+  }
+
+  /** A weapon let go of, landing on stone: it rings, bounces, and lies still. */
+  clatter(intensity = 1, heavy = false, pan = 0) {
+    const t = this.begin('clatter', 0.25, 0.7, true);
+    if (t === null) return;
+    const I = clamp(intensity, 0.1, 1), out = this.panned(pan), base = (heavy ? rand(380, 520) : rand(900, 1300));
+    let at = t + rand(0.18, 0.3), amp = 0.16 * I;
+    for (let k = 0; k < 3; k++) {
+      for (let i = 0; i < 3; i++) {
+        const f = base * BLADE[i] * rand(0.97, 1.03), dec = (heavy ? 0.12 : 0.22) * BLADE_DEC[i] * (1 - k * 0.2);
+        this.osc('sine', f, at, at + dec + 0.05).connect(this.env(at, amp * BLADE_AMP[i], 0.001, dec)).connect(out);
+      }
+      this.burst(at, 'highpass', 3000, 0.7, amp * 1.6, 0.0006, 0.02, out);
+      at += rand(0.09, 0.16) * (1 - k * 0.25); amp *= 0.5;
+    }
   }
 
   wood(intensity = 1, crack = false) {
@@ -486,6 +522,63 @@ export class AudioFX {
       g.gain.value = a;
       mix.connect(this.filt('bandpass', f * shift, 7)).connect(g).connect(e);
     }
+  }
+
+  /**
+   * A human voice in a bad moment. `kind`: 'scream' (a limb gone, a deep wound), 'fall' (going over the edge: long,
+   * fading), 'death' (the last sound, sinking), 'moan' (lying wounded), 'kiai' (the shout that goes with a blow).
+   * `pitch` is the man's own voice (0.7 deep .. 1.3 high). Each kind is rate-limited, so a melee does not turn into a choir.
+   */
+  cry(kind = 'scream', { pitch = 1, level = 1, pan = 0 } = {}) {
+    const K = {
+      scream: { gap: 0.9, dur: [0.45, 0.85], f: [250, 360], up: 1.35, end: 0.72, rough: [38, 70, 0.4], noise: 0.5, vow: [[850, 1], [1400, 0.7], [2900, 0.35]], amp: 0.5 },
+      fall: { gap: 1.2, dur: [1.2, 1.7], f: [260, 340], up: 1.25, end: 0.6, rough: [30, 55, 0.3], noise: 0.4, vow: [[800, 1], [1250, 0.7], [2800, 0.3]], amp: 0.5 },
+      death: { gap: 0.6, dur: [0.6, 1.1], f: [150, 210], up: 1.05, end: 0.5, rough: [18, 34, 0.55], noise: 0.9, vow: [[560, 1], [1000, 0.5], [2400, 0.15]], amp: 0.36 },
+      moan: { gap: 2.2, dur: [0.7, 1.3], f: [105, 150], up: 1.08, end: 0.82, rough: [9, 16, 0.25], noise: 0.35, vow: [[480, 1], [950, 0.45], [2300, 0.12]], amp: 0.2 },
+      kiai: { gap: 0.6, dur: [0.16, 0.28], f: [190, 270], up: 1.3, end: 1.1, rough: [45, 80, 0.3], noise: 0.6, vow: [[780, 1], [1250, 0.65], [2700, 0.3]], amp: 0.34 },
+    }[kind];
+    if (!K) return false;
+    const dur = rand(K.dur[0], K.dur[1]);
+    const t = this.begin('cry-' + kind, K.gap, dur + 0.15, kind === 'moan');
+    if (t === null) return false;
+    const ctx = this.ctx, p = clamp(pitch, 0.6, 1.4), L = clamp(level, 0, 1.2), out = this.panned(pan);
+    if (L < 0.02) return false;
+    const f0 = rand(K.f[0], K.f[1]) * p, end = t + dur;
+    // the cords: two saws a hair apart, the pitch thrown up at the start and sagging as the breath runs out
+    const mix = ctx.createGain();
+    for (const det of [1, 1.007]) {
+      const o = this.osc('sawtooth', f0, t, end + 0.1), fr = o.frequency;
+      fr.setValueAtTime(f0 * 0.85 * det, t);
+      fr.linearRampToValueAtTime(f0 * K.up * det, t + Math.min(0.09, dur * 0.3));
+      fr.exponentialRampToValueAtTime(f0 * K.end * det, end);
+      // (no voice holds a pitch under strain: it wavers)
+      const jl = ctx.createGain(); jl.gain.value = f0 * 0.03;
+      this.osc('sine', rand(5, 8), t, end + 0.1).connect(jl).connect(fr);
+      o.connect(mix);
+    }
+    const ng = ctx.createGain(); ng.gain.value = K.noise;
+    this.noiseSrc(t, dur + 0.1).connect(ng).connect(mix);
+    // the throat tearing at it: the loudness itself shakes
+    const am = ctx.createGain(); am.gain.value = 1 - K.rough[2] * 0.5;
+    const rl = ctx.createGain(); rl.gain.value = K.rough[2] * 0.5;
+    this.osc('square', rand(K.rough[0], K.rough[1]), t, end + 0.1).connect(rl).connect(am.gain);
+    const e = ctx.createGain(), g = e.gain, peak = K.amp * L;
+    g.setValueAtTime(0.0001, t);
+    g.exponentialRampToValueAtTime(peak, t + (kind === 'moan' ? 0.12 : 0.025));
+    if (kind === 'fall') g.exponentialRampToValueAtTime(peak * 0.04, end);
+    else { g.setValueAtTime(peak, t + dur * 0.55); g.exponentialRampToValueAtTime(0.0001, end); }
+    g.setValueAtTime(0.0001, end + 0.02);
+    const shift = rand(0.94, 1.08) * (0.9 + 0.1 * p);
+    for (const [f, a] of K.vow) {
+      const fg = ctx.createGain(); fg.gain.value = a;
+      mix.connect(this.filt('bandpass', f * shift, 6)).connect(fg).connect(am);
+    }
+    am.connect(e).connect(out);
+    if (kind === 'death') {       // the breath going out of him after the voice has gone
+      const b = this.burst(end - 0.1, 'bandpass', 900, 1.1, 0.12 * L, 0.08, 0.5, out);
+      b.frequency.setValueAtTime(1000, end - 0.1); b.frequency.exponentialRampToValueAtTime(420, end + 0.45);
+    }
+    return true;
   }
 
   /** One hard breath in and out; `tired` 0..1 sets how loud. */
