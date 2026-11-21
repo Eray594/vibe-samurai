@@ -290,8 +290,10 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 ## Tests
 
 ```bash
-node tests/run.mjs                # alles (rund 6 Minuten)
+node tests/run.mjs                # alles (rund 2–3 Minuten; mehrere Browser arbeiten nebeneinander)
 node tests/run.mjs defense fuzz   # nur Suiten, deren Name eines dieser Wörter enthält
+node tests/run.mjs --changed      # nur die Suiten, die zu den geänderten Dateien gehören
+JOBS=1 node tests/run.mjs         # ein Browser nach dem anderen
 node tests/run.mjs --list         # welche Suiten es gibt
 SEED=7 node tests/run.mjs fuzz    # Zufallstest mit anderem Startwert
 ```
@@ -306,9 +308,12 @@ Hand an. Jede Suite (`tests/suites/*.js`) läuft auf einer frisch geladenen Seit
 | `20-menu` | Hauptmenü, Rekorde, Schwierigkeit, Pause |
 | `30-defense` | Festung, Shop, Soldaten, Fallen, Türme, Wellen, Anführer, Niederlage, Aufräumen |
 | `40-goals` | Erfolge, Tagesaufgabe, Einführung |
+| `45-rules` | Regeln, die immer gelten: Tagesaufgabe gibt Waffe und Wetter vor, Verbesserung verfällt nicht, was „Fortschritt löschen“ löscht, Staub und Blut landen auf dem, was darunter ist |
 | `50-language-touch` | Englisch (auch: nirgends bleibt deutscher Text stehen), Touch-Steuerung |
 | `51-english-start` | Gespeicherte Sprache, Schwierigkeit und Rekorde beim Laden |
 | `60-cliff` | Die Karte Wolkengipfel: Zaun und offene Kanten, Absturz, Glocke, Fels, alle Modi, Kartenwahl im Hauptmenü |
+| `70-layout` (`71` kleines Fenster, `72` Handy) | Alles, was auf dem Bildschirm steht, passt ins Bild und liegt nicht aufeinander |
+| `80-leaks` | Nach vielen Resets bleibt nichts in Grafikkarte, Physik oder Szene zurück |
 | `90-fuzz` | Zufallseingaben in jedem Modus: keine Ausnahme, niemand verlässt den Hof, keine NaN, nichts bleibt zurück |
 
 `91-fuzz-cliff` lässt dieselben Zufallseingaben auf dem Wolkengipfel laufen.
@@ -316,6 +321,20 @@ Hand an. Jede Suite (`tests/suites/*.js`) läuft auf einer frisch geladenen Seit
 Jede Suite schlägt außerdem fehl, wenn in der Browser-Konsole ein Fehler erscheint. Braucht Node 22+
 und Chrome, sonst nichts. Dieselben Tests laufen bei jedem Push auf GitHub
 (`.github/workflows/deploy.yml`); schlagen sie fehl, wird nicht veröffentlicht.
+
+### Hinsehen und Nachschlagen
+
+```bash
+node tools/look.mjs before            # rund 40 feste Szenen als Bilder der ganzen Seite nach .look/before/
+node tools/look.mjs now               # … nach einer Änderung noch einmal
+node tools/look.mjs --diff before now # welche Bilder sich geändert haben, und wie stark
+node tools/look.mjs --eval "<js>"     # einen Schnipsel im Spiel ausführen und das Ergebnis ausgeben
+node tools/index.mjs                  # Karte des Codes: jede Datei, ihre Klassen und Methoden mit Zeilennummern
+node tools/index.mjs --find dash      # wo ein Wort vorkommt
+```
+
+`look.mjs` setzt den Zufall für jede Szene neu, damit derselbe Code dasselbe Bild ergibt. `tools/shot.mjs`
+macht einzelne Bilder nur der 3D-Ansicht.
 
 ## Aufbau (`src/`)
 

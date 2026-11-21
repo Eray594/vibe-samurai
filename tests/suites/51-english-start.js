@@ -1,4 +1,4 @@
-// @storage {"vibesamurai.settings": {"lang": "en", "diff": "hard", "help": false}, "vibesamurai.best.survival": {"wave": 9, "kills": 31, "time": 200}, "vibesamurai.tutorial": {"done": true}}
+// @storage {"vibesamurai.settings": {"lang": "en", "diff": "hard", "help": false, "music": false}, "vibesamurai.best.survival": {"wave": 9, "kills": 31, "time": 200}, "vibesamurai.tutorial": {"done": true}}
 // What was saved on an earlier visit is there again when the page loads.
 await new Promise((r) => setTimeout(r, 50));
 const ov = $('overlay');
@@ -8,3 +8,4 @@ check('Gespeicherter Rekord steht auf der Karte', document.querySelector('#mode-
 check('Wer die Einführung kennt, wird nicht mehr darauf hingewiesen', !document.querySelector('#mode-cards [data-mode="tutorial"]').classList.contains('hot'));
 check('Der Seitentitel ist englisch', document.title.includes('sandbox'));
 check('Eine weggeklickte Steuerungstafel bleibt beim nächsten Besuch zu', !visible($('help')) && visible($('help-open')) && $('help-open').title.startsWith('Show the controls'), $('help-open').title);
+check('Abgeschaltete Musik bleibt beim nächsten Besuch aus', g.audio.music === false);

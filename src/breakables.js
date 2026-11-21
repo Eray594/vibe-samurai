@@ -203,11 +203,17 @@ export class Breakables {
       });
     }
     world.addBody(body);
-    if (kind === 'screen') mergeStatic(mesh);      // dozens of slats and panes: one draw call per material
+    if (kind === 'screen') { mergeStatic(mesh); item.own = true; }      // dozens of slats and panes: one draw call per material (geometry of its own, see `drop`)
     scene.add(mesh);
     syncMesh(mesh, body);
     this.items.push(item);
     return item;
+  }
+
+  /** Take an object's picture out of the yard. What was merged for it alone goes with it; shared shapes stay. */
+  drop(item) {
+    this.game.scene.remove(item.mesh);
+    if (item.own) item.mesh.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
   }
 
   // ------------------------------------------------------------------ damage
@@ -284,7 +290,7 @@ export class Breakables {
       world.addBody(foot);
       item.body = foot;
     } else {
-      scene.remove(item.mesh);
+      this.drop(item);
       item.body = null;
     }
     const heavy = item.kind === 'lantern';
@@ -340,7 +346,7 @@ export class Breakables {
     const { scene, world } = this.game;
     for (const it of this.items) {
       if (it.body) world.removeBody(it.body);
-      scene.remove(it.mesh);
+      this.drop(it);
       if (it.light) scene.remove(it.light);
     }
     this.items = [];

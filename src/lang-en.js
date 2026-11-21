@@ -231,6 +231,7 @@ export const EN = {
   'Tiefer Fall': 'A long way down', 'Stoße einen Gegner in den Abgrund': 'Knock an opponent into the abyss',
   'Glockenschlag': 'Bell ringer', 'Bringe Gegner mit der Tempelglocke ins Wanken': 'Stagger opponents with the temple bell',
   'Im Rauch verschwunden': 'Gone in the smoke', 'Zünde eine Rauchbombe': 'Set off a smoke bomb',
+  'Die Tagesaufgabe gibt die Waffe vor': 'The daily challenge sets the weapon', 'Die Tagesaufgabe gibt das Wetter vor': 'The daily challenge sets the weather',
   'Rauchbombe': 'Smoke bomb', '· wer nichts sieht, greift nicht an · ein Treffer auf Benommene:': '· who cannot see does not attack · a hit on a dazed opponent:', 'Haltung bricht': 'breaks his posture',
   'Wolkengipfel: Gegner über die': 'Cloud Peak: knock opponents over the', 'offene Kante': 'open edge', 'stoßen · die': '· strike the', 'Glocke': 'bell',
   'schlagen: alle in der Nähe taumeln': 'and everyone near it staggers',

@@ -416,6 +416,7 @@ export class Weapon {
   dispose() {
     this.game.world.removeBody(this.body);
     this.game.scene.remove(this.mesh);
+    this.mesh.traverse((o) => { if (o.geometry) o.geometry.dispose(); });      // (the model was built for this one weapon)
     this.bladeMat.dispose();
     this.trail?.dispose();
   }

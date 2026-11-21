@@ -116,6 +116,12 @@ class Game {
     this.arena = this.map === 'cliff' ? new CliffArena(this) : new Arena(this);
     this.platforms = this.arena.buildPlatforms?.() ?? buildPlatforms(this);
     this.effects.solidAt = (x, z) => this.arena.solidAt(x, z);
+    // dust, drops and stains come to rest on whatever is under them (the podium, the boulder), not on the floor below it
+    this.effects.surfaceAt = (x, z, y) => {
+      let top = 0;
+      for (const p of this.platforms) if (x > p.x0 && x < p.x1 && z > p.z0 && z < p.z1 && y > p.top - 0.3 && p.top > top) top = p.top;
+      return top;
+    };
     this.smokes = [];
     this.grip = 1;                 // how well feet hold on the ground (rain makes it slick)
     this.perk = { dmg: 1, deflect: 1, kunai: 1, postureDmg: 1, lifesteal: false };
@@ -387,6 +393,7 @@ class Game {
   setPlayerWeapon(key) {
     if (!WEAPONS[key] || WEAPONS[key].thrown) return;
     if (this.player.state !== 'active') return;
+    if (this.fixedLoadout && key !== this.daily.weapon) { this.callout('DIE TAGESAUFGABE GIBT DIE WAFFE VOR', null, 'small'); return; }
     this.player.setWeapon(key);
     this.ctl.runner.cancel();
     this.arena.showRack(key);
@@ -426,6 +433,9 @@ class Game {
     if (this.touch.active) { this.input.locked = true; this.started = true; }
     else this.input.lock();
   }
+
+  /** The daily challenge is the same for everyone: its weapon and its weather are not the player's to choose. */
+  get fixedLoadout() { return this.mode === 'daily'; }
 
   /** The lost state of a defense: the shrine is gone. */
   get lost() { return this.defense.active && this.defense.fallen; }
@@ -1794,7 +1804,7 @@ class Game {
       k.poolN = (k.poolN || 0) + 1;
       const p = k.ragBodies.torso?.position || k.ragBodies.pelvis.position;
       const r = 0.12 + k.poolN * 0.03;
-      this.effects.decal(p.x + rand(-r, r), p.z + rand(-r, r), 0.35 + k.poolN * 0.06);
+      this.effects.decal(p.x + rand(-r, r), p.z + rand(-r, r), 0.35 + k.poolN * 0.06, p.y + 0.4);
     }
   }
 
@@ -1904,6 +1914,11 @@ class Game {
     btn('help-close', () => this.setHelp(false));
     btn('help-open', () => this.setHelp(true));
     this.setHelp(this.settings.help !== false);
+    // how much room the bar at the top takes (it wraps on narrow screens): panels below it keep clear of it
+    const bar = $('topbar'), room = () => { this.barH = Math.ceil(bar.getBoundingClientRect().bottom); document.documentElement.style.setProperty('--bar', this.barH + 'px'); };
+    room();
+    if (window.ResizeObserver) new ResizeObserver(room).observe(bar);
+    addEventListener('resize', room);
 
     const wb = $('weapon-buttons');
     WEAPON_ORDER.forEach((key, i) => {
@@ -1943,6 +1958,7 @@ class Game {
   toggleHelp() { this.setHelp(this.ui.help.classList.contains('hidden')); }
 
   nextWeather() {
+    if (this.fixedLoadout) { this.callout('DIE TAGESAUFGABE GIBT DAS WETTER VOR', null, 'small'); return; }
     this.weather.next();
     this.ui.weather.textContent = this.weather.name;
     this.callout(up(this.weather.name), null, 'small');
@@ -1961,7 +1977,8 @@ class Game {
     const el = document.createElement('div');
     el.className = 'callout ' + cls;
     el.textContent = text;
-    let x = innerWidth / 2, y = innerHeight * 0.3;
+    // (while upgrades are on offer the middle of the screen is theirs: what is called out goes above them)
+    let x = innerWidth / 2, y = this.perks?.choosing ? (this.barH || 100) + 22 : innerHeight * 0.3;
     if (worldPos) {
       const p = _c.copy(worldPos).project(this.camera);
       if (p.z < 1) { x = (p.x * 0.5 + 0.5) * innerWidth; y = (-p.y * 0.5 + 0.5) * innerHeight - 30; }
@@ -2003,7 +2020,7 @@ class Game {
       this.setPlayerSkin(SKIN_ORDER[i]);
     }
     if (p.has('KeyZ')) this.toggleSlowmo();
-    if (p.has('KeyN')) { this.audio.music = !this.audio.music; this.callout(this.audio.music ? 'MUSIK AN' : 'MUSIK AUS', null, 'small'); }
+    if (p.has('KeyN')) { this.settings.set('music', !this.audio.music); this.callout(this.audio.music ? 'MUSIK AN' : 'MUSIK AUS', null, 'small'); }
     if (p.has('KeyH')) this.toggleHelp();
     if (p.has('KeyE')) {
       if (this.player.weapon && !this.player.weapon.attached) {
@@ -2111,7 +2128,7 @@ class Game {
         prompt = '<kbd>Space</kbd> hochziehen · <kbd>S</kbd> loslassen';
       } else if (this.findFinisherTarget(P)) {
         prompt = '<kbd>LMB</kbd> <b class="kill">Todesstoß</b>';
-      } else {
+      } else if (!this.fixedLoadout) {
         let best = null, bd = 1.6;
         for (const s of this.arena.rack.slots) {
           const d = Math.hypot(s.world.x - pp.x, s.world.z - pp.z);

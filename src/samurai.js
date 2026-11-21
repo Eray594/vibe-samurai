@@ -492,7 +492,7 @@ export class Samurai {
       if (this.crawling && !this.crawlRest && inj.bleeding > 0.05 && this.game.effects) {
         this.trailT -= dt;
         const tp = this.ragBodies.torso?.position;
-        if (this.trailT <= 0 && tp) { this.trailT = 0.3; this.game.effects.decal(tp.x + rand(-0.1, 0.1), tp.z + rand(-0.1, 0.1), rand(0.18, 0.34)); }
+        if (this.trailT <= 0 && tp) { this.trailT = 0.3; this.game.effects.decal(tp.x + rand(-0.1, 0.1), tp.z + rand(-0.1, 0.1), rand(0.18, 0.34), tp.y + 0.4); }
       }
       const pel = this.ragBodies.pelvis.position;
       if (pel.y < -5 && !this.game.arena?.abyss) for (const n in this.ragBodies) { this.ragBodies[n].position.y += 6; this.ragBodies[n].velocity.setZero(); }

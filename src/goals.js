@@ -94,15 +94,19 @@ export const dateKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMon
 export class Daily {
   constructor(game, date = dateKey()) {
     this.game = game;
-    this.setDate(date);
+    this.setDate(date, false);
   }
-  setDate(date) {
+  /** `fixed`: this day and no other (tests); otherwise the day follows the calendar, see `today`. */
+  setDate(date, fixed = true) {
+    this.fixed = fixed;
     this.date = date;
     this.seed = Number(date.replaceAll('-', ''));
     const r = this.rng(0);
     this.weapon = WEAPON_ORDER[Math.floor(r() * WEAPON_ORDER.length)];
     this.weather = WEATHER_ORDER[Math.floor(r() * WEATHER_ORDER.length)];
   }
+  /** A page left open over midnight: the challenge is the one of the day that has begun. */
+  today() { if (!this.fixed && dateKey() !== this.date) this.setDate(dateKey(), false); }
   /** A fresh, repeatable stream for one purpose (a wave, a perk offer). */
   rng(salt) { return mulberry32(this.seed * 131 + salt * 7919 + 17); }
   /** The i-th opponent of a wave. */
@@ -117,7 +121,9 @@ export class Daily {
   /** Called by the yard reset when the daily run starts. */
   begin() {
     const g = this.game;
+    this.today();
     if (g.weather.key !== this.weather) g.weather.set(this.weather);
+    if (g.ui?.weather) g.ui.weather.textContent = g.weather.name;
     if (g.player.weapon.def.key !== this.weapon || !g.player.weapon.attached) { g.player.setWeapon(this.weapon); g.arena.showRack(this.weapon); }
     document.querySelectorAll('#weapon-buttons button').forEach((b) => b.classList.toggle('active', b.dataset.weapon === this.weapon));
   }

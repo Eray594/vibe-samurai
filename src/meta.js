@@ -9,16 +9,17 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard', help: true }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard', help: true, music: true }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map, help: this.help });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map, help: this.help, music: this.music });
     this.apply();
   }
   apply() {
     const g = this.game;
     g.audio.setVolume(this.volume);
+    g.audio.music = this.music !== false;
     g.effects.noBlood = !this.blood;
     if (g.replay) g.replay.enabled = this.replay;
   }
@@ -86,6 +87,12 @@ export class Progress {
   wipe() {
     this.honor = 0; this.total = 0; this.owned.clear();
     this.store();
+    // records, today's result and the finished tutorial are progress too (the settings are not)
+    try {
+      for (const mode of ['survival', 'chaos', 'defense']) { localStorage.removeItem('vibesamurai.best.' + mode); localStorage.removeItem('heavysteel.best.' + mode); }
+      localStorage.removeItem('vibesamurai.daily'); localStorage.removeItem('vibesamurai.tutorial');
+    } catch { /* no storage: nothing was kept anyway */ }
+    this.game.front?.refresh();
     this.game.ach?.wipe();
     if (SKINS[this.game.skin]?.locked) this.game.setPlayerSkin('ronin');
     this.game.perks.reset();

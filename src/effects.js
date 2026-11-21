@@ -436,7 +436,10 @@ class Sprites {
         S[o + SIZE] = Math.max(0, S[o + SIZE] + S[o + GROW] * dt);
         S[o + ROT] += S[o + SPIN] * dt;
         if (!(fin(S[o + PX]) && fin(S[o + PY]) && fin(S[o + PZ]))) life = 0;
-        else if (kind !== K_SOFT && kind !== K_FLASH && S[o + PY] < 0.012 && S[o + VY] < 0) life = fx.landed(S, o, kind, life);
+        else if (kind !== K_SOFT && kind !== K_FLASH && S[o + VY] < 0) {
+          const fl = fx.floorAt(S[o + PX], S[o + PZ], S[o + PY] - S[o + VY] * dt);      // (asked from where it was a moment ago: it may have passed through the top since)
+          if (S[o + PY] < fl + 0.012) life = fx.landed(S, o, kind, life, fl);
+        }
       }
       if (life <= 0) continue;
       S[o + LIFE] = life;
@@ -557,9 +560,10 @@ class Chips {
         _q2.setFromAxisAngle(_v.set(S[o + C_AX], S[o + C_AX + 1], S[o + C_AX + 2]), S[o + C_SPIN] * dt);
         _q.premultiply(_q2).normalize();
         S[o + C_Q] = _q.x; S[o + C_Q + 1] = _q.y; S[o + C_Q + 2] = _q.z; S[o + C_Q + 3] = _q.w;
-        const floor = Math.min(S[o + C_SX], S[o + C_SX + 2]) * 0.8 + 0.003;
+        const base = S[o + 4] < 0 ? fx.floorAt(S[o], S[o + 2], S[o + 1] - S[o + 4] * dt) : 0;
+        const floor = base + Math.min(S[o + C_SX], S[o + C_SX + 2]) * 0.8 + 0.003;
         if (S[o + 1] < floor && S[o + 4] < 0) {
-          if (S[o + C_KIND] === CHIP_GORE && S[o + 4] < -1.5) fx.stain(S[o], S[o + 2], rand(0.1, 0.25), 0, 0, 1);
+          if (S[o + C_KIND] === CHIP_GORE && S[o + 4] < -1.5) fx.stain(S[o], S[o + 2], rand(0.1, 0.25), 0, 0, 1, D_POOL, base);
           S[o + 1] = floor;
           if (S[o + 4] > -0.9) { S[o + C_REST] = 1; S[o + 3] = S[o + 4] = S[o + 5] = 0; }      // comes to lie where it is
           else { S[o + 3] *= 0.5; S[o + 4] *= -rand(0.2, 0.4); S[o + 5] *= 0.5; S[o + C_SPIN] *= 0.6; }
@@ -847,7 +851,7 @@ export class Effects {
    * A stain on the floor. `dx, dz` (optional) is the direction the blood was travelling, `stretch` how much longer
    * than wide it lands (a drop coming in flat leaves a long mark with a tail).
    */
-  stain(x, z, size, dx = 0, dz = 0, stretch = 1, cells = D_POOL) {
+  stain(x, z, size, dx = 0, dz = 0, stretch = 1, cells = D_POOL, y = 0) {
     if (this.noBlood || !(fin(x) && fin(z) && size > 0 && fin(size))) return;
     if (this.solidAt && !this.solidAt(x, z)) return;      // nothing to stain out over the edge
     const i = this.decalNext;
@@ -857,7 +861,7 @@ export class Effects {
     _q.setFromAxisAngle(Y, dirOk ? Math.atan2(-dx, -dz) : Math.random() * TAU);
     const st = fin(stretch) ? Math.min(5, Math.max(1, stretch)) : 1;
     if (st > 1) _s.set(size * 0.75, 1, size * st); else _s.set(size, 1, size * rand(0.7, 1.25));
-    _m.compose(_p.set(x, 0.004 + i * 0.00001, z), _q, _s);
+    _m.compose(_p.set(x, (fin(y) ? y : 0) + 0.004 + i * 0.00001, z), _q, _s);
     this.decalMesh.setMatrixAt(i, _m);
     const cell = pick(cells), a = this.decalAttr.array;
     a[i * 4] = (cell % GRID) / GRID; a[i * 4 + 1] = Math.floor(cell / GRID) / GRID; a[i * 4 + 2] = this.decalTime.value; a[i * 4 + 3] = rand(0.75, 1.1);
@@ -867,39 +871,46 @@ export class Effects {
     this.decalMesh.visible = true;
   }
 
-  /** A pool-shaped stain of the given size (see `stain` for marks with a direction). */
-  decal(x, z, size) { this.stain(x, z, size * 1.25); }
+  /** A pool-shaped stain of the given size (see `stain` for marks with a direction). `y`: how high the body it runs from lies. */
+  decal(x, z, size, y = 0) { this.stain(x, z, size * 1.25, 0, 0, 1, D_POOL, y > 0.3 ? this.floorAt(x, z, y) : 0); }
 
-  /** A sprite has reached the floor; returns the life it has left (0 = gone). */
-  landed(S, o, kind, life) {
+  /** Height of whatever lies under a point at height `y` (the floor, or the top of something that can be stood on). */
+  floorAt(x, z, y) {
+    if (!this.surfaceAt || !(y > 0.3)) return 0;
+    const f = this.surfaceAt(x, z, y);
+    return fin(f) && f > 0 ? f : 0;
+  }
+
+  /** A sprite has reached the floor (at height `fl`); returns the life it has left (0 = gone). */
+  landed(S, o, kind, life, fl = 0) {
     if (kind === K_BLOOD) {
       const s = S[o + SIZE], vx = S[o + VX], vy = S[o + VY], vz = S[o + VZ], h = Math.hypot(vx, vz);
       if (this.decalBudget > 0 && (s > 0.009 || Math.random() < 0.55)) {
         this.decalBudget--;
         const flat = h / Math.max(0.5, -vy);          // how flat it came in
-        if (flat > 0.55) this.stain(S[o + PX], S[o + PZ], s * rand(9, 15), vx, vz, Math.min(4.5, 1 + flat * 1.4), D_STREAK);
-        else if (s < 0.009) this.stain(S[o + PX], S[o + PZ], s * rand(14, 26), 0, 0, 1, D_SPATTER);
-        else this.stain(S[o + PX], S[o + PZ], s * rand(9, 16), 0, 0, 1, Math.random() < 0.5 ? D_DRIP : D_POOL);
+        if (flat > 0.55) this.stain(S[o + PX], S[o + PZ], s * rand(9, 15), vx, vz, Math.min(4.5, 1 + flat * 1.4), D_STREAK, fl);
+        else if (s < 0.009) this.stain(S[o + PX], S[o + PZ], s * rand(14, 26), 0, 0, 1, D_SPATTER, fl);
+        else this.stain(S[o + PX], S[o + PZ], s * rand(9, 16), 0, 0, 1, Math.random() < 0.5 ? D_DRIP : D_POOL, fl);
       }
       // a heavy drop throws up a crown of small ones
       if (s > 0.013 && vy < -2.5 && !S[o + AUX]) {
         const x = S[o + PX], z = S[o + PZ];
         for (let k = 0, n = 2 + (Math.random() * 3 | 0); k < n; k++) {
-          this._drop(x, 0.02, z, vx * 0.25 + rand(-0.9, 0.9), rand(0.6, 1.6), vz * 0.25 + rand(-0.9, 0.9), s * rand(0.22, 0.4), rand(0.3, 0.6), 1);
+          this._drop(x, fl + 0.02, z, vx * 0.25 + rand(-0.9, 0.9), rand(0.6, 1.6), vz * 0.25 + rand(-0.9, 0.9), s * rand(0.22, 0.4), rand(0.3, 0.6), 1);
         }
       }
       return 0;
     }
     if (kind === K_DROP) return 0;
     if (kind === K_EMBER) {       // lies where it fell and burns out
-      S[o + PY] = 0.008; S[o + VX] = S[o + VY] = S[o + VZ] = 0; S[o + GRAV] = 0;
+      S[o + PY] = fl + 0.008; S[o + VX] = S[o + VY] = S[o + VZ] = 0; S[o + GRAV] = 0;
       return life;
     }
     // sparks and debris skip off the ground, losing heat; a hot one may burst in two
-    S[o + PY] = 0.012;
+    S[o + PY] = fl + 0.012;
     S[o + VY] *= -rand(0.3, 0.6); S[o + VX] *= 0.62; S[o + VZ] *= 0.62;
     if (kind === K_SPARK && S[o + AUX] > 0.75 && life > 0.12 && Math.random() < 0.3) {
-      const c = this.sprites.spawn(K_SPARK, S[o + PX], 0.014, S[o + PZ], S[o + VX] + rand(-1.2, 1.2), S[o + VY] * rand(0.5, 1.3), S[o + VZ] + rand(-1.2, 1.2), life * rand(0.5, 0.9));
+      const c = this.sprites.spawn(K_SPARK, S[o + PX], fl + 0.014, S[o + PZ], S[o + VX] + rand(-1.2, 1.2), S[o + VY] * rand(0.5, 1.3), S[o + VZ] + rand(-1.2, 1.2), life * rand(0.5, 0.9));
       if (c >= 0) { S[c + SIZE] = S[o + SIZE] * 0.7; S[c + CELLF] = C_STREAK; S[c + STREAK] = 0.03; S[c + ADD] = 1; S[c + GRAV] = 7; S[c + DRAG] = 1; S[c + AUX] = S[o + AUX] * 0.8; }
     }
     S[o + AUX] *= 0.85;
@@ -943,10 +954,11 @@ export class Effects {
   dust(point, count, spread = 1) {
     if (!finV(point) || !fin(count) || !fin(spread)) return;
     const sp = this.sprites, S = sp.S, room = sp.room();
+    const gy = this.floorAt(point.x, point.z, point.y - 0.5);      // (asked for with the middle of a body: its feet are a metre lower)
     const n = Math.min(40, count) * room, heavy = count >= 8;
     for (let k = 0; k < n; k++) {
       const a = Math.random() * TAU, v = rand(0.5, 1.9) * spread, ca = Math.cos(a), sa = Math.sin(a);
-      const o = sp.spawn(K_SOFT, point.x + ca * rand(0, 0.18), rand(0.04, 0.12), point.z + sa * rand(0, 0.18), ca * v, rand(0.04, 0.4), sa * v, rand(0.7, 1.5));
+      const o = sp.spawn(K_SOFT, point.x + ca * rand(0, 0.18), gy + rand(0.04, 0.12), point.z + sa * rand(0, 0.18), ca * v, rand(0.04, 0.4), sa * v, rand(0.7, 1.5));
       if (o < 0) continue;
       const tone = rand(0.75, 1.15);
       S[o + SIZE] = rand(0.14, 0.26) * (0.85 + 0.15 * spread); S[o + GROW] = rand(0.35, 0.7); S[o + CELLF] = pick(C_CLOUD); S[o + A0] = rand(0.2, 0.38);
@@ -955,7 +967,7 @@ export class Effects {
     }
     if (heavy) {
       // the ring that runs out along the ground from a landing
-      const o = sp.spawn(K_SOFT, point.x, 0.03, point.z, 0, 0, 0, rand(0.45, 0.6));
+      const o = sp.spawn(K_SOFT, point.x, gy + 0.03, point.z, 0, 0, 0, rand(0.45, 0.6));
       if (o >= 0) {
         S[o + SIZE] = 0.22 * spread; S[o + GROW] = 2.1 * spread; S[o + CELLF] = C_DUSTRING; S[o + MODE] = 2; S[o + A0] = Math.min(0.5, 0.2 + count * 0.012);
         S[o + CR] = 0.6; S[o + CG] = 0.52; S[o + CB] = 0.43;
@@ -964,7 +976,7 @@ export class Effects {
     if (heavy || spread >= 1.2) {
       for (let k = 0, g = Math.min(9, 1 + count / 3); k < g; k++) {
         const a = Math.random() * TAU, v = rand(0.8, 2.6) * spread, s = rand(0.004, 0.011), tone = rand(0.5, 1);
-        this.chips.spawn(CHIP_STONE, point.x + Math.cos(a) * 0.1, 0.03, point.z + Math.sin(a) * 0.1, Math.cos(a) * v, rand(0.6, 2.4), Math.sin(a) * v,
+        this.chips.spawn(CHIP_STONE, point.x + Math.cos(a) * 0.1, gy + 0.03, point.z + Math.sin(a) * 0.1, Math.cos(a) * v, rand(0.6, 2.4), Math.sin(a) * v,
           rand(1.5, 3), s, s * rand(0.5, 0.9), s * rand(0.7, 1.2), 0.3 * tone, 0.27 * tone, 0.24 * tone);
       }
     }

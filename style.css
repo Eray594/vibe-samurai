@@ -89,10 +89,14 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 }
 #prompt .muted { color: var(--muted); }
 #prompt .kill { color: #ff5a4a; letter-spacing: 2px; }
+/* the controls: above the bars at the bottom, below the bar at the top; what does not fit scrolls (mouse free) */
 #help {
-  position: absolute; right: 18px; bottom: 18px; font-size: 12px; line-height: 1.75;
+  position: absolute; right: 18px; bottom: 100px; font-size: 12px; line-height: 1.75;
   padding: 10px 12px; background: var(--panel); border: 1px solid var(--edge); border-radius: 4px; color: var(--muted);
+  max-height: calc(100vh - var(--bar, 100px) - 112px); overflow-y: auto; pointer-events: auto; scrollbar-width: thin;
 }
+body.choosing #help, body.choosing #help-open { display: none; }
+body[data-playing="daily"] #weapon-buttons, body[data-playing="daily"] #btn-weather { display: none; }
 #help b { color: var(--ink); font-weight: normal; }
 #help .title { color: var(--ink); letter-spacing: 2px; margin-bottom: 3px; }
 #help .title { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
@@ -241,11 +245,14 @@ button.active { border-color: var(--blood); color: #fff3d6; box-shadow: inset 0 
 
 /* ---- perks between waves */
 #perks {
-  position: fixed; left: 50%; top: 24%; transform: translateX(-50%); display: none; gap: 12px; flex-wrap: wrap; justify-content: center;
-  pointer-events: none; max-width: 92vw;
+  position: fixed; left: 0; right: 0; top: 24%; margin: 0 auto; width: fit-content; display: none; gap: 12px; flex-wrap: wrap; justify-content: center;
+  pointer-events: none; max-width: 92vw;      /* (centred by its margins: centred by `left: 50%` it had only half the screen to lay the cards out in) */
 }
 #perks.show { display: flex; }
 #perks .head { width: 100%; text-align: center; letter-spacing: 5px; color: var(--gold); text-shadow: 0 0 6px #000; margin-bottom: 2px; }
+#perks .clock { display: inline-block; min-width: 26px; margin-left: 10px; padding: 0 6px; font-size: 13px; letter-spacing: 0; color: var(--ink); border: 1px solid var(--edge); border-radius: 10px; background: rgba(0,0,0,0.45); }
+#perks .clock.low { color: #ff6a5a; border-color: var(--blood); }
+@media (max-height: 480px) { #perks { top: 30%; flex-wrap: nowrap; } #perks .card { width: 28vw; max-width: 210px; padding: 8px 10px; } }
 #perks .card {
   width: 210px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--edge); border-top: 2px solid var(--blood);
   border-radius: 4px; display: flex; flex-direction: column; gap: 5px;
@@ -327,7 +334,7 @@ body:not(.sandbox) .sandbox-only { display: none; }
 
 /* ---- defense: shrine bar, money, shop */
 #def-hud {
-  position: fixed; left: 50%; top: 108px; transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 4px;
+  position: fixed; left: 50%; top: calc(var(--bar, 100px) + 8px); transform: translateX(-50%); display: none; flex-direction: column; align-items: center; gap: 4px;
   pointer-events: none; text-shadow: 0 0 6px #000;
 }
 #def-hud.show { display: flex; }
@@ -338,9 +345,9 @@ body:not(.sandbox) .sandbox-only { display: none; }
 #def-hud b { font-weight: normal; color: var(--gold); min-width: 70px; }
 #def-hud .info { font-size: 13px; color: var(--ink); }
 #def-shop {
-  position: fixed; right: 16px; top: 110px; width: 318px; display: none; flex-direction: column; gap: 3px; padding: 9px 10px;
+  position: fixed; right: 16px; top: calc(var(--bar, 100px) + 10px); width: 318px; display: none; flex-direction: column; gap: 3px; padding: 9px 10px;
   background: var(--panel); border: 1px solid var(--edge); border-top: 2px solid var(--gold); border-radius: 4px; z-index: 6;
-  max-height: calc(100vh - 130px); overflow-y: auto;
+  max-height: calc(100vh - var(--bar, 100px) - 22px); overflow-y: auto;
 }
 #def-shop.show { display: flex; }
 #def-shop .head { letter-spacing: 3px; text-transform: uppercase; font-size: 12px; color: var(--muted); margin-bottom: 3px; }

@@ -248,11 +248,19 @@ export class Perks {
     this.options = [];
     const g = this.game, rnd = g.mode === 'daily' ? g.daily.rng(1000 + g.wave) : Math.random;      // the daily offers are the same for everyone
     for (let i = 0; i < 3 && pool.length; i++) this.options.push(pool.splice(Math.floor(rnd() * pool.length), 1)[0]);
-    this.ui.innerHTML = '<div class="head">Wähle eine Verbesserung</div>' + this.options.map((p, i) =>
+    this.ui.innerHTML = '<div class="head">Wähle eine Verbesserung <small class="clock"></small></div>' + this.options.map((p, i) =>
       `<div class="card"><kbd>${i + 1}</kbd><b>${p.name}</b><span>${p.desc}</span></div>`).join('');
     this.ui.classList.add('show');
+    document.body.classList.add('choosing');          // the controls panel makes room for the cards
     this.choosing = true;
     this.offerT = 14;
+    this.tick();
+  }
+
+  /** How long there is left to choose, on the offer itself. */
+  tick() {
+    const el = this.ui.querySelector('.clock'), left = String(Math.max(0, Math.ceil(this.offerT)));
+    if (el && el.textContent !== left) { el.textContent = left; el.classList.toggle('low', this.offerT <= 5); }
   }
 
   pick(i) {
@@ -266,7 +274,7 @@ export class Perks {
     this.close();
   }
 
-  close() { this.choosing = false; this.ui.classList.remove('show'); }
+  close() { this.choosing = false; this.ui.classList.remove('show'); document.body.classList.remove('choosing'); }
 
   /**
    * The base values changed in the middle of a run (something bought in the dōjō, another outfit): work them
@@ -279,13 +287,14 @@ export class Perks {
     this.picked = picked;
     this.taken = picked.map((p) => p.name);
     if (g.ctl) g.ctl.heals = Math.min(g.ctl.maxHeals, heals + (gainHeal ? 1 : 0));      // bandages used stay used
-    if (open) { this.choosing = true; this.ui.classList.add('show'); }
+    if (open) { this.choosing = true; this.ui.classList.add('show'); document.body.classList.add('choosing'); }
   }
 
   update(dt) {
     if (!this.choosing) return;
     this.offerT -= dt;
-    if (this.offerT <= 0) this.close();
+    this.tick();
+    if (this.offerT <= 0) this.pick(0);          // undecided: the first one, rather than none at all
   }
 }
 
@@ -322,6 +331,7 @@ export class Replay {
   }
 
   record(dt) {
+    if (!this.enabled) { if (this.frames.length) this.frames = []; this.pendingT = 0; return; }      // switched off: nothing to keep
     this.clockT += dt;
     const objs = this.objects();
     const data = new Float32Array(objs.length * 8);

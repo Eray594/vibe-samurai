@@ -37,6 +37,7 @@ export class Front {
   /** Records, difficulty and language as they are right now. */
   refresh() {
     const g = this.game;
+    g.daily.today();
     const line = (r) => (r ? `Rekord: Welle ${r.wave} · ${r.kills} besiegt · ${fmtTime(r.time || 0)}` : 'Noch kein Rekord');
     const chaos = read('vibesamurai.best.chaos');
     const text = {

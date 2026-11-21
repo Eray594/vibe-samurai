@@ -100,7 +100,7 @@ export class Weather {
         if (Math.hypot(v.x, v.z) < 0.6) continue;
         const t = (this.trail.get(k) || 0) - dt;
         if (t <= 0) {
-          this.game.effects.decal(k.core.position.x + rand(-0.12, 0.12), k.core.position.z + rand(-0.12, 0.12), rand(0.1, 0.2));
+          this.game.effects.decal(k.core.position.x + rand(-0.12, 0.12), k.core.position.z + rand(-0.12, 0.12), rand(0.1, 0.2), k.core.position.y - 0.5);
           this.trail.set(k, 0.22);
         } else this.trail.set(k, t);
       }
