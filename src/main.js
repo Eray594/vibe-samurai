@@ -672,7 +672,7 @@ class Game {
       // his own blade takes the blow too
       if (D.weapon?.attached) { _cv.set(-away.x, -0.35, -away.z).scale(D.weapon.body.mass * (1 + s * 0.22), _cv); D.weapon.body.applyImpulse(_cv); }
       this.effects.sparksAt(point, 10 + s, 0.9);
-      this.audio.clank(0.5 + s / 14, 0.9);
+      if (this.audio.block) this.audio.block(0.5 + s / 14, w.def.mass > 2.5 || (D.weapon?.def.mass ?? 0) > 2.5); else this.audio.clank(0.5 + s / 14, 0.9);
       this.addHitStop(0.03);
       if (D.isPlayer) this.shake = Math.max(this.shake, crush ? 0.7 : 0.25);
       if (crush && D.isPlayer && !broke) this.callout('DURCHBROCHEN!', point, 'crit');
@@ -773,6 +773,7 @@ class Game {
     if (k.isPlayer && (attacker || w.thrower)?.team === 1) raw *= this.diff.dmg;
     if (this.mode === 'tutorial') raw *= k.isPlayer ? 0.1 : 0.25;                                             // a lesson, not a fight
     if (byPlayer) raw *= this.perk.dmg;
+    if (byPlayer && !k.isPlayer && !k.human && kind === 'cut') raw *= 0.85;      // (one cut should rarely settle it: the second one does)
     if (attacker && w.attached) raw *= attacker.momentum || 1;                  // a cut out of a run carries the run with it
     if (this.mode === 'training') raw *= k.isPlayer ? 0.12 : this.training.drill === 'free' ? 1 : 0.3;      // practice: nobody is cut down by accident
     if (attacker && w.attached && attacker.liveT <= 0) raw *= 0.25;   // the blade only bites in a committed cut
@@ -781,7 +782,10 @@ class Game {
     const wasDead = k.dead;
     const { sev, ev } = k.inj.wound(zone, raw, kind, def.armorMul ?? 1);
     const deflected = ev.includes('deflect');
-    if (def.thrown) w.dead = true;
+    if (def.thrown) {
+      w.dead = true;
+      if (!deflected && sev > 0.05) k.stick(part, c.point, dir, def);       // it went in, and there it stays
+    }
     // driven in deep, the blade does not come out again at once
     if (w.attached && attacker && !deflected && !attacker.atk?.pass && def.type !== 'club'
         && ((kind === 'thrust' && sev > 0.22) || (kind === 'cut' && zone === 'torso' && sev > 0.65))) this.stickBlade(attacker, 0.3 + Math.min(0.3, sev * 0.3));
@@ -789,7 +793,9 @@ class Game {
     // ---- dismemberment: a clean, hard cut through a limb or the neck
     let severed = null;
     if (kind === 'cut' && def.sever && !def.thrown && zone !== 'torso' && !deflected) {
-      const need = (zone.startsWith('leg') ? 0.58 : 0.48) * def.sever;
+      // plates, splints and a helmet's neck guard are what a blade has to get through first: the more of them,
+      // the harder a limb comes off (a limb already ruined comes off regardless)
+      const need = (zone.startsWith('leg') ? 0.58 : 0.48) * def.sever * (1 + 1.5 * k.inj.armorAt(zone));
       if (sev >= need || (k.inj.parts[zone] >= 1 && sev > 0.15)) {
         const cut = zone === 'head' ? 'head' : part;
         if (k.sever(cut, dir, s)) {
@@ -911,6 +917,7 @@ class Game {
    * decides whether this moment gets a voice at all: most hits pass with the sound of the blow alone.
    */
   cryOut(k, kind, chance = 1) {
+    if (this.settings.voices === false) return false;
     if (!k || k.isStructure || this.time - (k.cryAt ?? -9) < (kind === 'moan' ? 4 : 1.6) || Math.random() > chance) return false;
     const at = k.parts.torso.position, cam = this.camera, e = cam.matrixWorld.elements;
     const dx = at.x - cam.position.x, dz = at.z - cam.position.z, d = Math.hypot(dx, dz);
@@ -2211,7 +2218,7 @@ class Game {
     // paper doll: colour per body part, no numbers
     for (const [z, el] of Object.entries(ui.doll)) el.style.fill = injuryColor(inj.parts[z]);
     ui.doll.torso.style.fill = injuryColor(Math.max(inj.parts.torso, (1 - inj.blood) * 0.9));
-    const st = P.brokenT > 0 ? 'Haltung gebrochen' : P.slideT > 0 ? 'Rutschen' : P.sprinting ? 'Sprint'
+    const st = P.brokenT > 0 ? 'Haltung gebrochen' : P.slideT > 0 ? 'Rutschen' : P.sprinting ? 'Sprint' : this.ctl.sheathed ? 'Schwert in der Scheide'
       : this.ctl.mode === 'guard' ? STANCES[this.ctl.stance].name
         : this.ctl.mode === 'parry' && this.settings.sideGuard ? (this.ctl.blockSide < 0 ? 'Deckung links' : 'Deckung rechts') + (this.ctl.chain > 0 ? ` · Kette ${this.ctl.chain}` : '')
           : STANCE[this.ctl.mode] || 'Chūdan';

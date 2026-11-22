@@ -2,6 +2,7 @@
 //   node tools/index.mjs              the whole map
 //   node tools/index.mjs samurai ai   only these files, with every method
 //   node tools/index.mjs --find dash  where a word is defined or used (file:line, one line each)
+//   node tools/index.mjs --stamp      the short code the main menu shows for exactly these source files
 // For each file: size, what it imports from the game's own files, its classes with their methods and the
 // line each begins on, its top-level functions and constants. At the end: storage keys, keys read from the
 // keyboard, the texts called out on screen, and what the page's fixed elements are.
@@ -14,6 +15,17 @@ const SRC = join(ROOT, 'src');
 const args = process.argv.slice(2);
 const files = readdirSync(SRC).filter((f) => f.endsWith('.js')).sort();
 const text = Object.fromEntries(files.map((f) => [f, readFileSync(join(SRC, f), 'utf8')]));
+
+// the same short code the page shows in its main menu: which state of the source files this is
+if (args.includes('--stamp')) {
+  const seen = new Map();
+  const walk = (f) => { if (seen.has(f)) return; seen.set(f, text[f] ?? ''); for (const m of (text[f] ?? '').matchAll(/from '\.\/([\w.-]+\.js)'/g)) walk(m[1]); };
+  walk('main.js');
+  let h = 0x811c9dc5;
+  for (const [name, t] of [...seen].sort((a, b) => (a[0] < b[0] ? -1 : 1))) { const s = name + '\n' + t; for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0; }
+  console.log('v ' + h.toString(16).padStart(8, '0'));
+  process.exit(0);
+}
 
 const fi = args.indexOf('--find');
 if (fi >= 0) {

@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import { clamp, dampFactor, angleLerp } from './physics.js';
-import { POSES, guardFor, BLOCK_EDGE, GUARD, MOVESETS, AttackRunner, DEFLECT_WINDOW, spinYaw, STANCES } from './combat.js';
+import { L, D, POSES, guardFor, BLOCK_EDGE, GUARD, MOVESETS, AttackRunner, DEFLECT_WINDOW, spinYaw, STANCES } from './combat.js';
+
+/** The blade home in the scabbard at the left hip (the scabbard itself is part of the figure, see figure.js). */
+const SHEATH = { hand: L(-0.158, 0.175, 0.306), dir: D(-0.1, -0.41, -0.9) };
+const CALM_AFTER = 2.5, FOE_NEAR = 9;
 
 const SENS_LOOK = 0.0022;
 const SENS_HAND = 0.0027;
@@ -288,6 +292,7 @@ export class PlayerController {
     this.iaiCharge = 0;
     this.iaiCd = 0;
     this.stamina = 1; this.exhaustT = 0; this.plunge = null; this.dodgeBuf = 0;
+    this.calmT = 0; this.sheathed = false;
   }
 
   /** Called while the player is down: only the camera moves. */
@@ -568,6 +573,20 @@ export class PlayerController {
     }
     const shift = inp.down('ShiftLeft') || inp.down('ShiftRight');
     const wantGuard = inp.rmb && armed && !broken && !this.finisher && !k.holding;
+    // ---------- nobody to fight and nothing asked of the blade: it goes home into the scabbard, and is out again
+    // the moment an opponent comes near or a hand goes to it
+    let foe = false;
+    for (const f of game.fighters) {
+      if (f.team === k.team || f.state !== 'active' || f.dead || f.isStructure) continue;
+      const p = f.core.position;
+      if ((p.x - me.x) ** 2 + (p.z - me.z) ** 2 < FOE_NEAR * FOE_NEAR) { foe = true; break; }
+    }
+    const busy = foe || inp.lmb || inp.rmb || frame.lmbPressed || frame.rmbPressed || inp.down('KeyB') || this.runner.busy || this.free || this.iaiCharge > 0
+      || k.staggerT > 0 || k.kickT > 0 || !!k.holding || !armed || broken || !!this.lock || game.standoff?.active;
+    this.calmT = busy ? 0 : (this.calmT || 0) + dt;
+    const sheathed = this.calmT > CALM_AFTER && def.type === 'sword' && k.style?.saya !== false;
+    if (sheathed !== !!this.sheathed) { this.sheathed = sheathed; game.audio.scabbard?.(!sheathed); }
+    k.relaxed = sheathed;          // (nothing to be ready for: he stands up out of the fighting crouch)
     if (frame.rmbPressed) {
       // mashing the guard shrinks the deflection window
       k.deflectWindow = (this.guardPressT < 0.28 ? DEFLECT_WINDOW * 0.65 : DEFLECT_WINDOW) * (k.isPlayer ? game.perk.deflect : 1) * (this.exhausted ? 0.6 : 1) * (1 + 0.18 * Math.min(2, this.chainT > 0 ? this.chain : 0));
@@ -722,7 +741,7 @@ export class PlayerController {
         this.finisher = null;
         this.mode = 'guard';
         it.mode = 'guard';
-        this.runner.rest(dt, it, k.sprinting || k.slideT > 0 ? POSES.carry : this.homePose(def), k.sprinting ? 9 : 10);
+        this.runner.rest(dt, it, this.sheathed ? SHEATH : k.sprinting || k.slideT > 0 ? POSES.carry : this.homePose(def), this.sheathed ? 7 : k.sprinting ? 9 : 10);
       }
     }
     k.atk = this.runner.a;

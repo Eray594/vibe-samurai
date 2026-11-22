@@ -4,6 +4,7 @@ const card = (m) => cards.find((c) => c.dataset.mode === m);
 const rec = (m) => card(m).querySelector('.rec').textContent;
 
 // ---- main menu, as loaded
+check('Hauptmenü zeigt, welcher Stand der Dateien geladen ist', /^[0-9a-f]{8}$/.test(window.__build || '') && $('build').textContent === 'v ' + window.__build, $('build').textContent);
 check('Hauptmenü ist beim Laden sichtbar', visible(ov) && g.mainMenu && !g.paused);
 check('Hauptmenü bietet fünf Modi, keiner gesperrt', ['survival', 'defense', 'daily', 'duel', 'tutorial'].every((m) => card(m) && !card(m).disabled), cards.map((c) => c.dataset.mode));
 check('Neue Spieler werden auf die Einführung hingewiesen', card('tutorial').classList.contains('hot') && rec('tutorial').includes('Neu hier'));

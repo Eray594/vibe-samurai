@@ -9,11 +9,11 @@ const save = (key, v) => { try { localStorage.setItem(key, JSON.stringify(v)); }
 export class Settings {
   constructor(game) {
     this.game = game;
-    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard', help: true, music: true }));
+    Object.assign(this, load('vibesamurai.settings', { sens: 1, volume: 1, blood: true, standoff: true, replay: true, aimCuts: true, sideGuard: true, diff: 'normal', lang: 'de', map: 'yard', help: true, music: true, voices: true }));
   }
   set(key, value) {
     this[key] = value;
-    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map, help: this.help, music: this.music });
+    save('vibesamurai.settings', { sens: this.sens, volume: this.volume, blood: this.blood, standoff: this.standoff, replay: this.replay, aimCuts: this.aimCuts, sideGuard: this.sideGuard, diff: this.diff, lang: this.lang, map: this.map, help: this.help, music: this.music, voices: this.voices });
     this.apply();
   }
   apply() {
@@ -111,6 +111,7 @@ export class Menu {
         <label>Mausempfindlichkeit <input type="range" id="set-sens" min="0.3" max="2.5" step="0.05"><b id="set-sens-v"></b></label>
         <label>Lautstärke <input type="range" id="set-volume" min="0" max="1" step="0.05"><b id="set-volume-v"></b></label>
         <label class="chk"><input type="checkbox" id="set-blood"> Blut und Blutlachen</label>
+        <label class="chk"><input type="checkbox" id="set-voices"> Stimmen der Kämpfer (Schreie, Stöhnen)</label>
         <label class="chk"><input type="checkbox" id="set-standoff"> Duell-Eröffnung (ziehen, wenn der Gegner zuckt)</label>
         <label class="chk"><input type="checkbox" id="set-replay"> Wiederholung des Todesstoßes</label>
         <label class="chk"><input type="checkbox" id="set-aimCuts"> Hiebrichtung per Mausbewegung (Maus kurz ziehen, dann klicken)</label>
@@ -132,7 +133,7 @@ export class Menu {
       show();
       inp.addEventListener('input', () => { S.set(key, +inp.value); show(); });
     }
-    for (const key of ['blood', 'standoff', 'replay', 'aimCuts', 'sideGuard']) {
+    for (const key of ['blood', 'voices', 'standoff', 'replay', 'aimCuts', 'sideGuard']) {
       const inp = $('set-' + key);
       inp.checked = S[key];
       inp.addEventListener('change', () => S.set(key, inp.checked));
@@ -159,7 +160,7 @@ export class Menu {
 
   refresh() {
     const P = this.game.progress, S = this.game.settings;
-    for (const key of ['blood', 'standoff', 'replay', 'aimCuts', 'sideGuard']) { const inp = this.el.querySelector('#set-' + key); if (inp) inp.checked = !!S[key]; }      // (P switches the replay from the keyboard)
+    for (const key of ['blood', 'voices', 'standoff', 'replay', 'aimCuts', 'sideGuard']) { const inp = this.el.querySelector('#set-' + key); if (inp) inp.checked = !!S[key]; }      // (P switches the replay from the keyboard)
     this.el.querySelector('#shop-honor').textContent = `· ${P.honor} Ehre · Rang ${P.rank}`;
     const A = this.game.ach;
     if (A) {

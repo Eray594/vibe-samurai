@@ -125,13 +125,82 @@ const far = () => { fresh(0, 11); P.iframeT = 99; };
   K.clear();
 }
 
+// ---- armour: the same cut takes a rōnin's arm off and stops in a samurai's plates
+{
+  far(); const r = dummy('ronin', V(0, 0, -3)); step(10);
+  cut(r, 4, 15, 1.3);
+  far(); const m = dummy('samurai', V(0, 0, -3)); step(10);
+  cut(m, 4, 15, 1.3);
+  check('Rüstung: derselbe Hieb trennt dem Rōnin den Arm ab, dem Samurai nicht', r.severed.has('uArmR') && !m.severed.has('uArmR') && m.inj.parts.armR > 0.3, [[...r.severed], [...m.severed], m.inj.parts.armR]);
+  cut(m, 4, 15, 1.3);
+  check('… ein zweiter Hieb auf den schon zerschlagenen Arm trennt auch ihn ab', m.severed.has('uArmR'), [[...m.severed], m.inj.parts.armR]);
+  far(); const t = dummy('ronin', V(0, 0, -3)); step(10);
+  cut(t, 1, 14, 1.3);
+  check('Ein voller Hieb in den Rumpf verwundet schwer, tötet aber nicht sofort', !t.dead && t.inj.parts.torso > 0.5, [t.dead, t.inj.parts.torso]);
+  far(); const o = dummy('oni', V(0, 0, -3)); step(10);
+  cut(o, 1, 14, 1.3); cut(o, 1, 14, 1.3);
+  check('Ein Gepanzerter hält mehrere davon aus', !o.dead && o.state === 'active', [o.dead, o.inj.parts.torso]);
+}
+
+// ---- an arrow that goes in stays in
+{
+  fresh(0, 4); const e = dummy('archer', V(0, 0, -6)); step(5);
+  const shoot = (shape, y) => { const w = g.launch('arrow', e, V(0, 1.3, -1).clone(), V(0, 0, 1).clone(), 30); P.iframeT = 0; g.bodyHit(w, P.core.hs, { other: P.core, shape: P.core.shapes[shape], wshape: { hsPart: 'blade' }, point: V(0, y, 3.85).clone(), rel: V(0, 0, 30).clone(), speed: 30 }); return w; };
+  const w = shoot(1, 1.3);
+  check('Ein Pfeil, der trifft, bleibt stecken', P.stuck.length === 1 && P.stuck[0].parent === P.parts.torso && w.dead && P.inj.parts.torso > 0, [P.stuck.length, P.inj.parts.torso]);
+  const tip = P.stuck[0].getWorldPosition(V(0, 0, 0).clone());
+  K.add('KeyW'); step(40); K.clear();
+  check('… und geht mit dem Körper mit', P.stuck[0].getWorldPosition(V(0, 0, 0).clone()).distanceTo(tip) > 1 && P.stuck[0].getWorldPosition(V(0, 0, 0).clone()).distanceTo(P.parts.torso.position) < 0.6);
+  for (let i = 0; i < 12; i++) shoot(1, 1.2);
+  check('… aber niemand wird zum Nadelkissen', P.stuck.length <= 8, P.stuck.length);
+  P.inj.treat(); P.clearWounds();
+  check('Wunden versorgen zieht die Pfeile heraus', P.stuck.length === 0 && !P.parts.torso.children.some((c) => c.isGroup));
+}
+
+// ---- the sword goes home when there is nobody to fight
+{
+  for (const e of [...g.npcs]) g.removeNpc(e);
+  fresh(0, 4); if (P.weapon.def.key !== 'katana') P.setWeapon('katana');
+  step(60);
+  const early = ctl.sheathed;
+  step(60 * 3);
+  check('Kein Gegner in der Nähe: das Schwert geht von selbst in die Scheide', !early && ctl.sheathed && P.intent.hand.x < -0.1 && P.intent.hand.y < 0.25, [early, ctl.sheathed, P.intent.hand.toArray().map((v) => +v.toFixed(2))]);
+  const tipLow = P.weapon.worldPoint(P.weapon.tipLocal).y < P.weapon.worldPoint(P.weapon.handR).y;
+  check('… die Klinge zeigt an der linken Hüfte nach hinten unten', tipLow && P.weapon.worldPoint(P.weapon.tipLocal).z > P.core.position.z, P.weapon.worldPoint(P.weapon.tipLocal).toArray().map((v) => +v.toFixed(2)));
+  K.add('KeyW'); step(60); K.clear();
+  check('… und bleibt dort beim Gehen', ctl.sheathed);
+  const e = g.spawnFighter(1, 'ronin', V(P.core.position.x, 0, P.core.position.z - 5)); e.brain.update = () => {};
+  step(3);
+  const out = !ctl.sheathed; step(30);
+  check('Kommt ein Gegner näher, ist es wieder draußen', out && P.intent.hand.x > -0.1, [out, P.intent.hand.x]);
+  g.removeNpc(e); step(60 * 3 + 20);
+  g.input.lmb = true; g.input.lmbPressed = true; step(2); g.input.lmb = false;
+  check('Ein Hieb aus der Scheide heraus geht auch', !ctl.sheathed && ctl.runner.busy);
+  step(90); P.setWeapon('yari'); step(60 * 4);
+  check('Ein Speer hat keine Scheide', !ctl.sheathed);
+  P.setWeapon('katana');
+}
+
+// ---- nothing can hold a dodge at its top speed
+{
+  fresh(0, 4); K.add('KeyA'); tap('ShiftLeft', 1);
+  const sp = [];
+  while (P.dashT > 0 && sp.length < 40) { sp.push(Math.hypot(P.core.velocity.x, P.core.velocity.z)); step(1); }
+  check('Ausweichen: das Tempo nimmt nur ab', sp.every((v, i) => i === 0 || v <= sp[i - 1] + 0.05), sp.map((v) => +v.toFixed(1)));
+  fresh(0, 4); K.add('KeyA'); tap('ShiftLeft', 1); P.dashT = 3;        // (as if something had stretched the step: older code elsewhere, a slow frame)
+  let top = 0, x0 = P.core.position.x;
+  for (let i = 0; i < 120; i++) { step(1); if (i > 20) top = Math.max(top, Math.hypot(P.core.velocity.x, P.core.velocity.z)); }
+  check('… auch ein verlängerter Schritt wird kein Dauerlauf mit Höchsttempo', top < 13 && Math.abs(P.core.position.x - x0) < 16, [top, P.core.position.x - x0]);
+  K.clear();
+}
+
 // ---- the new sounds can be rendered, are audible and do not clip
 {
   const A = new g.audio.constructor(), ctx = new OfflineAudioContext(2, 44100 * 4, 44100);
   A.attach(ctx, true); A.music = false;
   let n = 0;
   for (const kind of ['scream', 'fall', 'death', 'moan', 'kiai']) { A.lead = 0.1 + n * 0.5; n += A.cry(kind, { pitch: 0.8 + n * 0.1, pan: n % 2 ? 0.5 : -0.5 }) ? 1 : 0; }
-  A.lead = 2.8; A.bone(1); A.lead = 3.0; A.clatter(1, true); A.lead = 3.3; A.hit(1, false, true); A.lead = 3.5; A.hit(1, false, false);
+  A.lead = 2.6; A.block(1); A.lead = 2.7; A.scabbard(true); A.lead = 2.8; A.bone(1); A.lead = 3.0; A.clatter(1, true); A.lead = 3.3; A.hit(1, false, true); A.lead = 3.5; A.hit(1, false, false);
   const buf = await ctx.startRendering(), d = buf.getChannelData(0);
   let peak = 0, bad = 0, loud = 0;
   for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (!(v >= 0)) bad++; if (v > peak) peak = v; if (v > 0.02) loud++; }

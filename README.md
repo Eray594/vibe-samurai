@@ -29,6 +29,9 @@ python3 -m http.server 8765      # oder: node tools/serve.mjs
 senkt oder hebt das Spiel Auflösung, Schatten, Leuchteffekt und Laternenlichter von selbst, um die
 Bildrate des Bildschirms zu halten. Ein Klick schaltet auf feste Stufen (Niedrig, Mittel, Hoch).
 
+Unten im Hauptmenü steht klein ein Code (`v …`): der Stand der geladenen Spieldateien. `node tools/index.mjs --stamp`
+nennt den Code der Dateien auf der Platte – stimmen beide überein, läuft im Browser genau dieser Stand.
+
 Braucht einen aktuellen Browser mit WebGL 2 und Pointer Lock (getestet in Chrome; Edge, Firefox
 und Safari nutzen dieselben Web-Standards).
 
@@ -194,7 +197,7 @@ vierter Verband, zweites Kunai, mehr Haltung, schnelleres Iai, schnellere Erholu
 zusätzliche Skins (Weißer Geist, Goldener Daimyō). Alles, was es vorher schon gab, bleibt frei.
 Der Fortschritt liegt im Browser auf diesem Rechner.
 
-Im selben Menü: Mausempfindlichkeit, Lautstärke, Blut an/aus, Duell-Eröffnung an/aus und
+Im selben Menü: Mausempfindlichkeit, Lautstärke, Blut an/aus, Stimmen der Kämpfer an/aus, Duell-Eröffnung an/aus und
 Wiederholung an/aus.
 
 ## Körper und Gewicht
@@ -265,6 +268,12 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 - **Die Toten.** Eine Leiche, die zur Ruhe gekommen ist, kostet fast nichts mehr (keine Physik, wenige
   Zeichenaufrufe, kein Schatten) und versinkt nach einer Weile im Boden – schneller, wenn der Hof voll ist.
   Schatten werfen nur die Kämpfer, die der Kamera am nächsten sind (wie viele, hängt an der Grafikstufe).
+- **Die Scheide.** Ist kein Gegner in der Nähe und wird nichts von der Klinge verlangt, geht das Schwert nach
+  ein paar Sekunden von selbst in die Scheide; kommt jemand näher oder greift die Hand danach, ist es wieder draußen.
+- **Pfeile bleiben stecken.** Ein Pfeil (oder Kunai), der trifft, steht aus dem getroffenen Körperteil heraus,
+  bis die Wunde versorgt wird (`C`).
+- **Rüstung schützt Glieder.** Je mehr Platten ein Körperteil trägt, desto schwerer lässt es sich abtrennen:
+  ein Rōnin verliert den Arm beim ersten vollen Hieb, ein Samurai erst, wenn der Arm schon zerschlagen ist.
 - **Rüstung.** Schnitte gleiten an lackierten Lamellen ab, Stiche finden Lücken, Wucht geht durch.
   Leichte Skins sind schneller, schwere halten mehr aus.
 - **Gore.** Saubere, harte Schnitte trennen Arme, Beine oder den Kopf ab; Stümpfe spritzen, Klingen

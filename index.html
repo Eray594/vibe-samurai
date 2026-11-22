@@ -155,6 +155,7 @@
       <button id="btn-main-settings">Einstellungen, Dōjō &amp; Erfolge</button>
     </div>
     <p class="hint"><b>RMB</b> blocken · im letzten Moment: Abwehr · <b>LMB</b> Hieb · Esc pausiert · H zeigt die Steuerung</p>
+    <small id="build" title="Stand der geladenen Spieldateien"></small>
   </div>
 </div>
 <div id="pause">
@@ -172,16 +173,27 @@
   // After an update a browser may still hold some of the game's files from before and mix old with new (the
   // game then stutters, or parts of it are missing). So: ask the server about every source file first — a few
   // short questions, answered "unchanged" nearly always — and only then load the game.
-  const seen = new Set();
+  // What was loaded is summed up in a short code shown in the main menu (the same one `node tools/index.mjs --stamp`
+  // prints for the files on disk), so it can be seen at a glance which state of the game is running.
+  const texts = new Map();
   const fresh = async (url) => {
-    if (seen.has(url)) return;
-    seen.add(url);
+    if (texts.has(url)) return;
+    texts.set(url, '');
     try {
       const text = await (await fetch(url, { cache: 'no-cache' })).text();
+      texts.set(url, text);
       await Promise.all([...text.matchAll(/from '(\.\/[\w.-]+\.js)'/g)].map((m) => fresh(new URL(m[1], url).href)));
     } catch { /* offline or blocked: load what there is */ }
   };
   await fresh(new URL('src/main.js', location.href).href);
+  let h = 0x811c9dc5;
+  for (const [url, text] of [...texts].map(([u, t]) => [u.slice(u.lastIndexOf('/') + 1), t]).sort((a, b) => (a[0] < b[0] ? -1 : 1))) {
+    const s = url + '\n' + text;
+    for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  window.__build = h.toString(16).padStart(8, '0');
+  const el = document.getElementById('build');
+  if (el) el.textContent = 'v ' + window.__build;
   await import('./src/main.js');
 </script>
 </body>

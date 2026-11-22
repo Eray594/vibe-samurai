@@ -4,7 +4,7 @@ import {
   materials, setGroup, G, MASK, toC, toT, qToT, quatError, worldInertiaMul, clamp, dampFactor, smooth, rand,
   interpPos, interpQuat, snapPrev, ARM_SHAPE_GROUP,
 } from './physics.js';
-import { Weapon } from './weapons.js';
+import { Weapon, buildWeaponModel } from './weapons.js';
 import { Injuries } from './injury.js';
 import { buildParts, SHOULDER } from './figure.js';
 import { L, POSTURE } from './combat.js';
@@ -159,6 +159,7 @@ export class Samurai {
     this.blendDur = 0.55;
     this.inj = new Injuries(opts.armor ?? 0.8);
     this.wounds = [];
+    this.stuck = [];             // arrows and kunai left standing in the body
     this.dripT = 0;
     this.wobble = new THREE.Vector3();
     this.wobbleT = 0;
@@ -466,7 +467,7 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.dashT > 0 ? 0.2 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
+    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.dashT > 0 ? 0.2 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached || this.relaxed ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
     this.crouch += (sit - this.crouch) * dampFactor(this.dashT > 0 ? 26 : 9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
@@ -572,11 +573,12 @@ export class Samurai {
     if (this.airborne) maxA *= 0.45;
     if (this.dashT > 0) {
       maxA = 0;
-      if (this.dashSp > 0 && !this.airborne) {
-        // a step is a push, not a slide at one speed: quickest as the foot leaves the ground, easing into the next stride
-        // (never faster than the step used to be: it is the ending that is softer)
-        const u = clamp(1 - this.dashT / this.dashDur, 0, 1), f = 1 - 0.42 * u * u;
-        b.velocity.x = this.dashDir.x * this.dashSp * f; b.velocity.z = this.dashDir.z * this.dashSp * f;
+      if (this.dashSp > 0 && !this.airborne && this.dashT <= this.dashDur) {
+        // a step is a push that eases out. The speed is only ever taken away here, never given: whatever stopped
+        // the body (a wall, a man) keeps it stopped, and nothing can hold the step at its top speed
+        const u = clamp(1 - this.dashT / this.dashDur, 0, 1), f = 1 - 0.42 * u * u, k = f / (this.dashF || 1);
+        if (k < 1) { b.velocity.x *= k; b.velocity.z *= k; }
+        this.dashF = f;
       }
     } else if (this.glideT > 0) { this.glideT -= h; maxA *= 0.55; }
     // (after the step has had its say: nobody but the player dodges out over an open edge)
@@ -826,7 +828,7 @@ export class Samurai {
     b.angularVelocity.z += dir.x * 2.2;
     this.dashT = this.dashDur = dg.time * wet * 1.16;      // (a little longer, because it slows towards its end: the same ground covered)
     this.dashDir.set(dir.x, 0, dir.z).normalize();
-    this.dashSp = sp;
+    this.dashSp = sp; this.dashF = 1;
     this.glideT = 0.1;
     this.iframeT = dg.iframe;
     this.slideT = 0;
@@ -1096,6 +1098,23 @@ export class Samurai {
     if (this.wounds.length > 24) { const w = this.wounds.shift(); w.mesh.parent?.remove(w.mesh); }
   }
 
+  /** An arrow (or a kunai) that went in stays in: its shaft stands out of the part it hit and moves with it. */
+  stick(part, worldPoint, dirWorld, def) {
+    const obj = this.parts[part];
+    if (!obj || !def || !(dirWorld.lengthSq() > 1e-6)) return null;
+    obj.updateMatrixWorld();
+    const m = buildWeaponModel(def), dir = T.c.copy(dirWorld).normalize();
+    m.traverse((o) => { if (o.isMesh) { o.castShadow = false; o.userData.cast = false; } });
+    // the head buried, the shaft standing out the way it came
+    m.position.copy(worldPoint).addScaledVector(dir, def.arrow ? 0.03 : 0.06).applyMatrix4(T_INV.copy(obj.matrixWorld).invert());
+    m.quaternion.setFromUnitVectors(UP, dir).premultiply(obj.getWorldQuaternion(T.q3).invert());
+    obj.add(m);
+    this.stuck.push(m);
+    if (this.stuck.length > 8) this.unstick(this.stuck.shift());
+    return m;
+  }
+  unstick(m) { m.parent?.remove(m); m.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+
   restoreLimbs() {
     for (const n of this.severed) this.parts[n].visible = true;
     this.severed.clear();
@@ -1104,6 +1123,8 @@ export class Samurai {
 
   clearWounds() {
     for (const w of this.wounds) w.mesh.parent?.remove(w.mesh);
+    for (const m of this.stuck) this.unstick(m);      // (dressing a wound means pulling out what is in it)
+    this.stuck = [];
     this.wounds = [];
   }
 

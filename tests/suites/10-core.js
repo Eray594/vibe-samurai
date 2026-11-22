@@ -64,7 +64,7 @@ g.input.lmbPressed = true; step(72);
 check('Sturzangriff trifft', e.state === 'ragdoll' && (e.inj.parts.head > 0.2 || e.inj.parts.torso > 0.2), [e.state, e.inj.parts.head, e.inj.parts.torso]);
 const runs = [];
 for (const [x, z, yaw] of [[-4.5, 1.4, Math.PI / 2], [0, 12.5, Math.PI], [-8.1, 5, 0]]) { fresh(x, z, yaw); K.add('KeyW'); K.add('ShiftLeft'); step(150); K.clear(); step(30); runs.push(P.state + ':' + P.getPos().y.toFixed(1)); }
-check('Gegen Hindernisse rennen wirft nicht um', runs.every((r) => r === 'active:0.9'), runs.join());
+check('Gegen Hindernisse rennen wirft nicht um', runs.every((r) => r === 'active:0.9' || r === 'active:1.0'), runs.join());      // (0.9 in the fighting crouch, 1.0 upright once the sword is sheathed)
 
 // ---------------------------------------------------------------- counters
 e = dummy('ashigaru', V(0, 0, 1.6)); e.setWeapon('yari'); fresh();

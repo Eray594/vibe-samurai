@@ -41,9 +41,12 @@ export class Injuries {
     this.consciousness -= 0.25;
   }
 
+  /** How much armour covers this zone (0 cloth .. 1). */
+  armorAt(zone) { return zone === 'head' ? Math.min(1, this.armor + 0.08) : zone.startsWith('arm') ? this.armor * 0.85 : this.armor; }
+
   /** How strongly armour reduces a hit of this kind on this zone. */
   armorFactor(kind, zone, armorMul = 1) {
-    let a = zone === 'head' ? Math.min(1, this.armor + 0.08) : zone.startsWith('arm') ? this.armor * 0.85 : this.armor;
+    let a = this.armorAt(zone);
     a = Math.min(1, a * armorMul);
     return 1 - a * ARMOR_PASS[kind];
   }

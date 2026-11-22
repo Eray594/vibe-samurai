@@ -233,6 +233,7 @@ export const EN = {
   'Im Rauch verschwunden': 'Gone in the smoke', 'Zünde eine Rauchbombe': 'Set off a smoke bomb',
   'Die Tagesaufgabe gibt die Waffe vor': 'The daily challenge sets the weapon', 'Die Tagesaufgabe gibt das Wetter vor': 'The daily challenge sets the weather',
   'Vom Boden getroffen!': 'Cut from the ground!',
+  'Stimmen der Kämpfer (Schreie, Stöhnen)': 'Voices of the fighters (screams, moans)', 'Schwert in der Scheide': 'Sword sheathed', 'Stand der geladenen Spieldateien': 'Which state of the game files is loaded',
   'Rauchbombe': 'Smoke bomb', '· wer nichts sieht, greift nicht an · ein Treffer auf Benommene:': '· who cannot see does not attack · a hit on a dazed opponent:', 'Haltung bricht': 'breaks his posture',
   'Wolkengipfel: Gegner über die': 'Cloud Peak: knock opponents over the', 'offene Kante': 'open edge', 'stoßen · die': '· strike the', 'Glocke': 'bell',
   'schlagen: alle in der Nähe taumeln': 'and everyone near it staggers',
