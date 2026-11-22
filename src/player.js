@@ -559,8 +559,21 @@ export class PlayerController {
         this.dodgeBuf = 0;
         this.spend(again ? 0.1 : 0.16);
         this.lastDodgeAt = game.time;
-        k.pivot = pivot ? { tgt: this.lock, sign: pivot } : null;
-        if (pivot) { k.dodgeKind = 'pivot'; k.dashSp = 0; }
+        k.pivot = null;
+        if (pivot) {
+          // round the locked opponent: an arc of a good third of a turn at the distance held now, at one steady pace
+          const tp = this.lock.getPos(_q), r = clamp(Math.hypot(tp.x - me.x, tp.z - me.z), 1.5, 4), sp = Math.hypot(k.core.velocity.x, k.core.velocity.z) * 0.8;
+          k.pivot = { tgt: this.lock, sign: pivot, r, sp };
+          k.dodgeKind = 'pivot'; k.dashSp = 0;
+          k.dashT = k.dashDur = clamp(1.25 * r / Math.max(sp, 1), 0.18, 0.4);
+        } else if (this.valid(this.lock)) {
+          // straight at the locked opponent: the step ends in front of him, not inside him
+          const tp = this.lock.getPos(_q), tx = tp.x - me.x, tz = tp.z - me.z, td = Math.hypot(tx, tz) || 1;
+          if ((d.x * tx + d.z * tz) / td > 0.6 && k.dashSp > 0) {
+            const full = k.dashSp * k.dashDur * 0.86, room = td - 1.3;
+            if (room < full) { const s = clamp(room / full, 0.12, 1); k.dashT = k.dashDur = k.dashDur * s; if (room < 0.3) { k.core.velocity.x *= 0.3; k.core.velocity.z *= 0.3; } }
+          }
+        }
         game.onDodge(k, d, this);
       } else if (this.exhausted || k.airborne) this.dodgeBuf = 0;
     }
@@ -569,10 +582,11 @@ export class PlayerController {
       const pv = k.pivot;
       if (k.dashT <= 0 || !this.valid(pv.tgt)) k.pivot = null;
       else {
+        // along the circle at the pace it began with, easing out; drifting off the circle is corrected, never added to the pace
         const tp = pv.tgt.getPos(_q), rx = me.x - tp.x, rz = me.z - tp.z, rd = Math.hypot(rx, rz) || 1;
-        const v = k.core.velocity, sp = Math.hypot(v.x, v.z);
-        const tx = (rz / rd) * pv.sign, tz = (-rx / rd) * pv.sign, pull = rd > 1.7 ? -0.25 : 0.15;
-        v.x = (tx + (rx / rd) * pull) * sp; v.z = (tz + (rz / rd) * pull) * sp;
+        const u = clamp(1 - k.dashT / k.dashDur, 0, 1), sp = pv.sp * (1 - 0.45 * u * u), fix = clamp((pv.r - rd) * 5, -3, 3);
+        const tx = (rz / rd) * pv.sign, tz = (-rx / rd) * pv.sign, v = k.core.velocity;
+        v.x = tx * sp + (rx / rd) * fix; v.z = tz * sp + (rz / rd) * fix;
       }
     }
     if (pressed.has('KeyX') && k.sprinting && !broken) {

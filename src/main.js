@@ -820,11 +820,17 @@ class Game {
     if (attacker?.swingHeavy) raw *= 1.25;
     if (!w.attached) raw *= this.time - (w.thrownAt ?? -9) < 2.5 ? 1.5 : 0.5;      // a weapon thrown in earnest, or one just lying about
     const wasDead = k.dead;
+    // a thrown knife has no weight behind it: on plates it rings and drops, in cloth and flesh it stays
+    if (def.thrown && !def.arrow && k.inj.armorAt(zone) > 0.45) raw = 0;
     const { sev, ev } = k.inj.wound(zone, raw, kind, def.armorMul ?? 1);
     const deflected = ev.includes('deflect');
     if (def.thrown) {
       w.dead = true;
-      if (!deflected && sev > 0.05) k.stick(part, c.point, dir, def);       // it went in, and there it stays
+      if (!deflected && sev > 0.05) {
+        k.stick(part, c.point, dir, def);       // it went in, and there it stays
+        // and it is felt: the arm it stands in drops, the leg gives, the man loses his thread for a moment
+        if (k.state === 'active' && !k.isPlayer) { if (zone.startsWith('leg')) k.kneelT = Math.max(k.kneelT, 0.5); if (k.brain) { k.brain.recoilT = Math.max(k.brain.recoilT, 0.5); k.brain.runner?.cancel?.(); } if (Math.random() < 0.6) this.cryOut(k, 'scream', 1); }
+      }
     }
     // driven in deep, the blade does not come out again at once
     if (w.attached && attacker && !deflected && !attacker.atk?.pass && def.type !== 'club'
@@ -866,7 +872,7 @@ class Game {
       if (ev.includes('broken') || (kind === 'blunt' && sev > 0.5)) this.audio.bone?.(0.5 + sev);
       // a voice only when it is bad: a grunt now and then, a scream for a deep wound, the last sound for some of the dying
       if (!severed) {
-        if (ev.includes('dead')) { if (zone !== 'head') this.cryOut(k, 'death', 0.8); }
+        if (ev.includes('dead')) { if (zone !== 'head') this.cryOut(k, 'death', 1); }
         else if (sev > 0.35) this.cryOut(k, 'scream', 0.75);
         else if (sev > 0.2 && Math.random() < 0.3 && this.time - k.cryAt > 1.6) { this.audio.voice?.('pain', 0.5 + sev); k.cryAt = this.time; }
       }
@@ -908,6 +914,8 @@ class Game {
       } else if (heavyBlow) k.goRagdoll(launch(0.9), part, false);
       else {
         if (ev.includes('disarm') || (ev.includes('disarmL') && k.weapon?.def.twoHanded)) k.disarm(dirH.clone().multiplyScalar(2));
+        // a hard blow on a leg: it gives way, and he is down on a knee for a moment
+        if (zone.startsWith('leg') && sev > 0.2 && !deflected) { k.kneelT = Math.max(k.kneelT, 0.45 + sev * 0.8); if (k.brain) k.brain.recoilT = Math.max(k.brain.recoilT, 0.4 + sev); }
         const dv = dirH.clone().multiplyScalar(knockMag * 0.11);
         const balLoss = knockMag * 0.03 + sev * 0.5 + (zone === 'head' ? 0.2 : 0) + (zone.startsWith('leg') ? 0.25 : 0);
         k.stagger(dv, c.point, balLoss, 0.3 + knockMag * 0.02 + sev);
@@ -941,6 +949,9 @@ class Game {
     if (severed === 'head') { k.dead = true; if (!wasDead) { this.callout('ENTHAUPTET!', c.point, 'crit'); this.audio.taiko(0.8); if (k.team === 1) this.spreadFear(c.point, 9, 0.8); } }
     else if (severed) this.callout(zone.startsWith('arm') ? 'ARM ABGETRENNT!' : 'BEIN ABGETRENNT!', c.point, 'crit');
     else if (ev.includes('dead') && !wasDead) this.onFighterDeath(k, c.point);
+    // the cut that ends the fight is shown once more (as the finishing blow is)
+    if (byPlayer && k.team === 1 && !wasDead && k.dead && attacker && w.attached && this.mode !== 'versus' && this.mode !== 'tutorial'
+        && !this.npcs.some((e) => e !== k && e.team === 1 && !e.counted && !e.dead)) this.replay.trigger(k, attacker);
     else if (ev.includes('ko')) this.callout('BEWUSSTLOS!', c.point, 'crit');
     else if (ev.includes('disarm') && !k.weapon?.attached) this.callout('ENTWAFFNET!', c.point, 'crit');
     else if (ev.includes('broken')) this.callout(`${up(Z)} GEBROCHEN!`, c.point, 'crit');
@@ -1090,7 +1101,7 @@ class Game {
     this.effects.blood(point, _c.set(-dir.x, 0.4, -dir.z), 80, 1.2);
     this.effects.gore(point, dir, 16);
     this.effects.impact(point, 2);
-    if (!headOff) this.cryOut(V, 'death', 0.7);
+    if (!headOff) { V.cryAt = -9; this.cryOut(V, 'death'); }
     A.weapon.bloodUp(1);
     this.audio.slash();
     this.audio.hit(1.4, def.type === 'club');
@@ -1103,7 +1114,7 @@ class Game {
     this.callout(headOff ? 'ENTHAUPTET!' : 'TODESSTOSS!', point, 'crit');
     if (V.team === 1) this.spreadFear(point, 10, 0.9);
     // the blow that ends the fight is shown once more
-    if (A.isPlayer && this.mode !== 'versus' && !this.npcs.some((e) => e !== V && e.team === 1 && !e.counted && !e.dead)) this.replay.trigger(V);
+    if (A.isPlayer && this.mode !== 'versus' && !this.npcs.some((e) => e !== V && e.team === 1 && !e.counted && !e.dead)) this.replay.trigger(V, A);
   }
 
   // ------------------------------------------------------------------ tools

@@ -70,6 +70,15 @@ play('duel'); step(5);
   check('Fortschritt löschen: die Einstellungen bleiben', localStorage.getItem('vibesamurai.settings') === settings);
 }
 
+// ---- the voices can be tried out in the settings
+{
+  const said = []; const cry = g.audio.cry; g.audio.cry = (kind) => { said.push(kind); return true; };
+  g.menu.toggle(true); $('voice-test').click();
+  await new Promise((r) => setTimeout(r, 1500));
+  check('Einstellungen: „Probe hören“ spielt die Stimmen vor', said.length >= 2 && said[0] === 'scream', said);
+  g.menu.toggle(false); g.audio.cry = cry; g.input.locked = true;
+}
+
 // ---- the replay does not record while it is switched off
 {
   g.settings.set('replay', false); step(60);

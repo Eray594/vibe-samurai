@@ -210,6 +210,9 @@ export class Samurai {
     this.glideT = 0;             // coming out of a step: the feet catch the ground again gradually
     this.groundCd = rand(1.5, 3);      // down but alive: until he can lash out again
     this.groundWind = 0;
+    this.riseT = 0;              // getting up: first into a crouch on the ground, then onto the feet
+    this.riseDur = 1;
+    this.kneelT = 0;             // a leg gave way under a blow: down on a knee for a moment
     this.frozen = null;          // a dead body that has come to rest: its picture as a few merged meshes, no physics
     this.deadT = 0;
 
@@ -468,7 +471,8 @@ export class Samurai {
     this.liveT = this.attackPhase === 'strike' ? 0.22 : Math.max(0, this.liveT - dt);
     // kamae: sit into the knees with a blade in hand, deeper while cutting, taller when running
     // a broken guard drops a fighter almost to one knee
-    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.dashT > 0 ? 0.2 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached || this.relaxed ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
+    this.kneelT = Math.max(0, this.kneelT - dt);
+    const sit = this.slideT > 0 || this.rollT > 0 ? 0.36 : this.dashT > 0 ? 0.2 : this.kneelT > 0 ? 0.4 : this.brokenT > 0 ? 0.34 : !this.weapon?.attached || this.relaxed ? 0.02 : this.sprinting ? 0.03 : this.attackPhase === 'strike' ? 0.12 : this.attackPhase ? 0.09 : this.intent.mode === 'parry' ? 0.11 : 0.07;
     this.crouch += (sit - this.crouch) * dampFactor(this.dashT > 0 ? 26 : 9, dt);
     this.brokenT = Math.max(0, this.brokenT - dt);
     const guardUp = this.guarding;
@@ -735,7 +739,7 @@ export class Samurai {
     this.atk = null;
     this.slideT = 0;
     this.hang = null; this.climb = null; this.rollT = 0; this.stuckT = 0; this.skidT = 0;
-    this.techTried = false;
+    this.techTried = false; this.settled = false; this.riseT = 0; this.kneelT = 0;
     this.bound = false;
     this.aimT = 0;
     if (this.holding) { this.holding.heldBy = null; this.holding = null; }
@@ -763,7 +767,10 @@ export class Samurai {
     this.balance = 0.4;
     this.staggerT = 0.6;
     this.blendT = 0;
-    this.blendDur = 0.6 + (1 - this.inj.vitality) * 0.7;      // the wounded struggle to their feet
+    // nobody goes from lying to standing in one piece: the body gathers itself into a crouch where it lay (quickly),
+    // then the legs push it up (the wounded slowly)
+    this.blendDur = 0.42;
+    this.riseT = this.riseDur = 0.75 + (1 - this.inj.vitality) * 0.8;
     this.crawling = false;
     this.tryRegrab(2.2);
     this.game.onFighterUp(this);
@@ -924,7 +931,18 @@ export class Samurai {
       if (this.dyingT <= 0 || this.severed.has('head')) return;
       this.dyingT -= 1 / 120;
       tone = 0.6 * Math.max(0, this.dyingT);
+      // (and once it has let go, the body lies still: no twitching corpses)
+      if (this.dyingT <= 0 && !this.settled) { this.settled = true; for (const n in this.ragBodies) { this.ragBodies[n].linearDamping = 0.35; this.ragBodies[n].angularDamping = 0.85; } }
     } else tone = this.inj.consciousness > 0.05 ? 0.25 + 0.5 * this.inj.vitality : 0.08;
+    // going down awake: the arms go out to break the fall and the chin is kept off the ground
+    if (!this.dead && this.inj.consciousness > 0.3 && this.ragTime < 0.7) {
+      const rb = this.ragBodies, tv = rb.torso?.velocity;
+      if (tv) {
+        const sp = Math.hypot(tv.x, tv.z) || 1, k = 1 - this.ragTime / 0.7;
+        for (const n of ['fArmR', 'fArmL']) { const a = rb[n]; if (a) a.applyForce(C.v.set(tv.x / sp * 55 * a.mass * k, -8 * a.mass * k, tv.z / sp * 55 * a.mass * k)); }
+        if (rb.head) rb.head.applyForce(C.v2.set(0, rb.head.mass * 16 * k, 0));
+      }
+    }
     // awake and in pain: they writhe
     const writhe = !this.dead && this.inj.consciousness > 0.2 && (!this.inj.canStand || this.inj.shock > 0.3);
     for (const [child, parent] of JOINTS) {
@@ -1272,12 +1290,20 @@ export class Samurai {
     const sway = Math.sin(wt) * 0.24 * wob, pitch = (0.16 + Math.sin(wt * 0.63) * 0.1) * wob + (this.skidT > 0 ? -0.3 * (this.skidT / 0.26) : 0);
     const fl = this.flinchT > 0 ? (this.flinchT / 0.34) ** 2 : 0;
     // a dodge shows in the whole body: it leans the way it goes and sinks into the push
+    // getting up: out of a deep crouch, bent well forward over the knees, straightening as the legs push
+    let rise = 0;
+    if (this.riseT > 0) {
+      if (dt > 0) this.riseT = Math.max(0, this.riseT - dt);
+      rise = smooth(clamp(this.riseT / this.riseDur, 0, 1));
+      const drop = 0.5 * rise;
+      cp.y -= drop; P.pelvis.position.y -= drop; P.torso.position.y -= drop;
+    }
     let dashF = 0, dashR = 0;
     if (this.dashT > 0 && this.rollT <= 0 && this.dashDur > 0) {
       const k = Math.sin(Math.PI * clamp(1 - this.dashT / this.dashDur, 0, 1)) * 0.3;
       dashF = (this.dashDir.x * T.fwd.x + this.dashDir.z * T.fwd.z) * k; dashR = (this.dashDir.x * T.right.x + this.dashDir.z * T.right.z) * k;
     }
-    const chestPitch = -this.lean - this.runLean - pitch - this.accLean.y - dashF + this.flinchP * fl - br * 0.009 * deep - lf.land * 1.3 - 0.03 * lf.effort;
+    const chestPitch = -this.lean - this.runLean - pitch - this.accLean.y - dashF - 0.85 * rise - (this.kneelT > 0 ? 0.25 : 0) + this.flinchP * fl - br * 0.009 * deep - lf.land * 1.3 - 0.03 * lf.effort;
     const chestRoll = sway + this.accLean.x - dashR + this.flinchR * fl - pelRoll * 0.6 + drift(time * 0.38, lf.seed + 5) * 0.012 * still;
     P.torso.quaternion.copy(cq).multiply(T.q2.setFromEuler(T.eul.set(chestPitch, chestYaw, chestRoll, 'YXZ')));
     const chest = (br * 0.5 + 0.5) * (0.014 + 0.03 * lf.effort);         // the ribs open with every breath

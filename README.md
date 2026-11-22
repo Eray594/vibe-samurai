@@ -179,7 +179,7 @@ Die vollständige Tastenbelegung:
 | drei Abwehren in Folge | **Parier-Kette**: jede weitet das nächste Zeitfenster, die dritte bricht die Haltung des Gegners |
 | LMB in der Deckung | schneller Stoß, danach steht die Deckung wieder |
 | seitlich gehen, während der Hieb landet | den Hieb **ins Leere lenken**: der Gegner stolpert vorbei |
-| Shift zweimal · seitlich mit erfasstem Ziel | **Rolle** · den Gegner **umkreisen** |
+| Shift zweimal · seitlich mit erfasstem Ziel | **Rolle** · den Gegner **umkreisen** (ein Bogen im gehaltenen Abstand, Blick bleibt auf ihm) |
 | Shift in der Luft | **Salto** (einmal pro Sprung): etwas mehr Höhe und Weite, kurz kaum zu treffen |
 | Maus während des Hiebs | lenkt die Bahn der Klinge ein Stück weit |
 | Backspace · Esc | Hof zurücksetzen · Pause (gibt die Maus für die Leiste oben frei) |
@@ -264,6 +264,10 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
   kämpfen weiter. Wer den Schwertarm verliert, hebt die Waffe mit links auf und kämpft schwächer
   weiter; Schwerverletzte weichen zurück statt anzugreifen, halten sich die Bauchwunde und stehen
   langsamer auf. Eine gebrochene Haltung zwingt fast auf ein Knie.
+- **Körper.** Wer wach zu Boden geht, streckt die Arme aus und hält den Kopf oben; aufgestanden wird über die Hocke,
+  nicht in einem Stück; ein harter Treffer aufs Bein lässt es einknicken; Tote liegen still.
+- **Kunai.** Bleibt in Stoff und Fleisch stecken und wird gespürt (der Getroffene verliert kurz den Faden, ein
+  getroffenes Bein knickt ein); an Rüstung prallt es ab.
 - **Am Boden ist nicht tot.** Wer ein Bein verliert oder nicht mehr stehen kann, lebt weiter: er kriecht
   weg, stöhnt – und wer über ihm stehen bleibt, bekommt die Klinge ins Bein (der Arm hebt sich vorher:
   Abstand nehmen oder wegtreten). Wer den Schwertarm verliert, schreit, holt die Waffe mit links und kämpft weiter.
@@ -294,8 +298,10 @@ der rechten Tastaturseite. Die Kamera steht seitlich und hält beide im Bild.
 - **Duell-Eröffnung.** Jedes Duell beginnt Auge in Auge, die Hand am Griff: warten, bis der Gegner
   zuckt (**今**), dann LMB. Schneller gezogen = ein einziger Schnitt. Zu früh oder zu spät kostet
   Haltung oder Blut. RMB überspringt.
-- **Wiederholung.** Der Todesstoß, der den Kampf beendet, läuft noch einmal in Zeitlupe aus
-  kreisender Kamera (Klick überspringt, P schaltet ab).
+- **Wiederholung.** Der Hieb, der den Kampf beendet (Todesstoß oder tödlicher Schnitt auf den Letzten), läuft noch
+  einmal wie im Film: zwischen schwarzen Balken, fließend zwischen den aufgezeichneten Bildern, mit Tempo, das in den
+  Hieb hinein fast stehen bleibt, aus zwei Einstellungen mit einem Schnitt auf den Treffer – erst im Profil, dann tief
+  und nah am Fallenden (Klick überspringt, P schaltet ab).
 - **Wetter.** Nacht (nur Laternen und Mond), Regen (rutschiger Boden, Feuer erlischt), Schnee
   (jeder verwundete Schritt hinterlässt eine Spur).
 - **Feuer.** Eine zerschlagene Laterne setzt ihr Öl in Brand; das Feuer greift auf Papierwände,

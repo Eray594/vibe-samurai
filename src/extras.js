@@ -298,12 +298,16 @@ export class Perks {
   }
 }
 
-// ------------------------------------------------------------------ replay of the finishing blow
-const REPLAY_KEEP = 3.2, REPLAY_SPEED = 0.38;
+// ------------------------------------------------------------------ the last blow once more, as a film would show it
+const REPLAY_KEEP = 3.4;
+const _ca = new THREE.Vector3(), _cb = new THREE.Vector3(), _cl = new THREE.Vector3();
+const ease = (t) => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
 
 /**
- * Keeps the last seconds of every visible transform. After a finishing blow that ends the fight
- * the simulation pauses and those seconds are played back slowly from a circling camera.
+ * Keeps the last seconds of every visible transform. After the blow that ends a fight the simulation stands
+ * still and those seconds are shown again: played back smoothly between the recorded frames (so slow motion does
+ * not stutter), slowing right down into the blow and easing out of it, from two camera set-ups with a cut on the
+ * blow itself — a profile shot that travels in with the attacker, then low and close on the one who falls.
  */
 export class Replay {
   constructor(game) {
@@ -314,8 +318,10 @@ export class Replay {
     this.pendingT = 0;
     this.focus = null;
     this.clockT = 0;
+    this.lastAt = -99;
     this.ui = el('replay');
     this.ui.innerHTML = 'WIEDERHOLUNG <small>Klick überspringt</small>';
+    this.look = new THREE.Vector3();
   }
 
   objects() {
@@ -324,6 +330,7 @@ export class Replay {
       for (const n in k.parts) list.push(k.parts[n]);
       if (k.weapon) list.push(k.weapon.mesh);
       if (k.horse) list.push(k.horse.mesh);
+      if (k.frozen) for (const m of k.frozen) list.push(m);
     }
     for (const l of g.limbs) for (const n in l.meshes) list.push(l.meshes[n]);
     for (const w of g.kunais) list.push(w.mesh);
@@ -335,9 +342,9 @@ export class Replay {
     this.clockT += dt;
     const objs = this.objects();
     const data = new Float32Array(objs.length * 8);
-    for (let i = 0; i < objs.length; i++) {
+    for (let i = 0, j = 0; i < objs.length; i++, j += 8) {
       const o = objs[i], p = o.position, q = o.quaternion;
-      data.set([p.x, p.y, p.z, q.x, q.y, q.z, q.w, o.visible ? 1 : 0], i * 8);
+      data[j] = p.x; data[j + 1] = p.y; data[j + 2] = p.z; data[j + 3] = q.x; data[j + 4] = q.y; data[j + 5] = q.z; data[j + 6] = q.w; data[j + 7] = o.visible ? 1 : 0;
     }
     this.frames.push({ t: this.clockT, objs, data });
     while (this.frames.length && this.clockT - this.frames[0].t > REPLAY_KEEP) this.frames.shift();
@@ -347,23 +354,52 @@ export class Replay {
     }
   }
 
-  /** Ask for a replay centred on `fighter`, once the aftermath has been recorded too. */
-  trigger(fighter) {
-    if (!this.enabled || this.active || this.pendingT > 0 || this.game.mode === 'training') return;
+  /** Ask for the blow that just felled `fighter` (struck by `attacker`) to be shown again, once its aftermath is on record too. */
+  trigger(fighter, attacker = this.game.player) {
+    if (!this.enabled || this.active || this.pendingT > 0 || this.game.mode === 'training' || this.clockT - this.lastAt < 6) return;
     this.focus = fighter;
-    this.pendingT = 0.9;
+    this.hit = { t: this.clockT, v: fighter.parts.torso.position.clone(), a: (attacker || this.game.player).parts.torso.position.clone() };
+    this.pendingT = 1.15;
   }
 
   begin() {
-    if (this.frames.length < 20 || !this.focus || this.focus.disposed) return;
+    const g = this.game, F = this.frames, H = this.hit;
+    if (F.length < 20 || !this.focus || this.focus.disposed || !H) return;
     this.active = true;
-    this.playT = this.frames[0].t;
-    this.endT = this.frames[this.frames.length - 1].t;
+    this.lastAt = this.clockT;
+    this.t0 = Math.max(F[0].t, H.t - 1.0);
+    this.t1 = Math.min(F[F.length - 1].t, H.t + 1.25);
+    this.playT = this.t0;
+    this.cursor = 0;
+    this.struck = false;
     this.all = new Map();
-    for (const f of this.frames) for (const o of f.objs) if (!this.all.has(o)) this.all.set(o, o.visible);
-    this.angle = this.game.ctl.yaw + 1.2;
+    for (const f of F) for (const o of f.objs) if (!this.all.has(o)) this.all.set(o, o.visible);
+    // ---- the two set-ups, from where attacker and victim stood at the blow
+    const dir = _ca.copy(H.v).sub(H.a).setY(0);
+    if (dir.lengthSq() < 0.04) dir.set(0, 0, -1);
+    dir.normalize();
+    const side = new THREE.Vector3(-dir.z, 0, dir.x), mid = H.a.clone().lerp(H.v, 0.5);
+    if (side.dot(_cb.copy(g.camera.position).sub(mid)) < 0) side.negate();       // (on the side the player was watching from)
+    const at = (base, f, s, y) => this.inYard(new THREE.Vector3(base.x + dir.x * f + side.x * s, y, base.z + dir.z * f + side.z * s));
+    this.shots = [
+      { from: at(mid, -1.2, 6.2, 1.2), to: at(mid, 0.4, 5.0, 1.0), lookFrom: H.a.clone().lerp(H.v, 0.35).setY(0.95), lookTo: H.v.clone().setY(0.9), fov: [40, 36], roll: 0 },
+      { from: at(H.v, 3.6, 1.9, 0.45), to: at(H.v, 2.9, 3.0, 0.8), lookFrom: H.v.clone().setY(0.85), lookTo: null, fov: [38, 42], roll: (Math.random() < 0.5 ? -1 : 1) * 0.045 },
+    ];
+    this.look.copy(this.shots[0].lookFrom);
+    this.fov0 = g.camera.fov;
     this.ui.classList.add('show');
-    this.game.ui.death.classList.remove('show');
+    document.body.classList.add('cine');
+    g.ui.death.classList.remove('show');
+    g.audio.whooshBurst?.(0.5);
+  }
+
+  /** A camera position kept inside the yard (and off the ground). */
+  inYard(p) {
+    const r = Math.hypot(p.x, p.z), max = 13.3;
+    if (r > max) { p.x *= max / r; p.z *= max / r; }
+    for (const [ox, oz, or] of this.game.arena.obstacles) { const dx = p.x - ox, dz = p.z - oz, d = Math.hypot(dx, dz); if (d < or + 0.3 && d > 1e-4 && p.y < 3) { p.x = ox + dx / d * (or + 0.3); p.z = oz + dz / d * (or + 0.3); } }
+    p.y = Math.max(0.35, p.y);
+    return p;
   }
 
   stop() {
@@ -373,32 +409,63 @@ export class Replay {
     this.all = null;
     this.frames = [];
     this.ui.classList.remove('show');
+    document.body.classList.remove('cine');
+    const cam = this.game.camera;
+    cam.fov = this.fov0 || 62; cam.updateProjectionMatrix();
+  }
+
+  /** How fast the film runs, by how far it is from the blow (seconds of recorded time; negative: before it). */
+  speedAt(d) {
+    if (d < -0.32) return 0.9;
+    if (d < 0) return 0.9 + (0.13 - 0.9) * ease((d + 0.32) / 0.32);
+    if (d < 0.2) return 0.13;
+    return 0.13 + (0.6 - 0.13) * ease((d - 0.2) / 0.5);
   }
 
   update(dt, frame) {
-    const g = this.game;
-    this.playT += dt * REPLAY_SPEED;
-    if (this.playT >= this.endT || frame.lmbPressed || frame.rmbPressed || frame.pressed.has('Space') || frame.pressed.has('Escape')) { this.stop(); return; }
-    let f = this.frames[0];
-    for (const fr of this.frames) { if (fr.t > this.playT) break; f = fr; }
-    const seen = new Set(f.objs);
+    const g = this.game, F = this.frames, H = this.hit;
+    const sp = this.speedAt(this.playT - H.t);
+    this.playT += dt * sp;
+    if (this.playT >= this.t1 || frame.lmbPressed || frame.rmbPressed || frame.pressed.has('Space') || frame.pressed.has('Escape')) { this.stop(); return; }
+    // ---- the picture: between the two recorded frames around this moment
+    while (this.cursor < F.length - 2 && F[this.cursor + 1].t <= this.playT) this.cursor++;
+    const f0 = F[this.cursor], f1 = F[Math.min(F.length - 1, this.cursor + 1)];
+    const same = f1.objs.length === f0.objs.length && f1.objs[0] === f0.objs[0] && f1.objs[f1.objs.length - 1] === f0.objs[f0.objs.length - 1];
+    const a = same && f1.t > f0.t ? Math.min(1, Math.max(0, (this.playT - f0.t) / (f1.t - f0.t))) : 0;
+    const seen = new Set(f0.objs);
     for (const o of this.all.keys()) if (!seen.has(o)) o.visible = false;
-    for (let i = 0; i < f.objs.length; i++) {
-      const o = f.objs[i], d = f.data, j = i * 8;
-      o.position.set(d[j], d[j + 1], d[j + 2]);
-      o.quaternion.set(d[j + 3], d[j + 4], d[j + 5], d[j + 6]);
-      o.visible = d[j + 7] > 0.5;
+    const d0 = f0.data, d1 = f1.data;
+    for (let i = 0, j = 0; i < f0.objs.length; i++, j += 8) {
+      const o = f0.objs[i];
+      o.visible = d0[j + 7] > 0.5;
+      if (a > 0) {
+        o.position.set(d0[j] + (d1[j] - d0[j]) * a, d0[j + 1] + (d1[j + 1] - d0[j + 1]) * a, d0[j + 2] + (d1[j + 2] - d0[j + 2]) * a);
+        // (the short way round, then back to unit length: plenty between two frames a sixtieth apart)
+        const s = d0[j + 3] * d1[j + 3] + d0[j + 4] * d1[j + 4] + d0[j + 5] * d1[j + 5] + d0[j + 6] * d1[j + 6] < 0 ? -a : a, k = 1 - a;
+        o.quaternion.set(d0[j + 3] * k + d1[j + 3] * s, d0[j + 4] * k + d1[j + 4] * s, d0[j + 5] * k + d1[j + 5] * s, d0[j + 6] * k + d1[j + 6] * s).normalize();
+      } else { o.position.set(d0[j], d0[j + 1], d0[j + 2]); o.quaternion.set(d0[j + 3], d0[j + 4], d0[j + 5], d0[j + 6]); }
     }
-    // circle the one who fell
-    this.angle += dt * 0.45;
-    const c = this.focus.parts.torso.position;
-    const cam = g.camera;
-    const r = 3.3;
-    cam.position.set(c.x + Math.sin(this.angle) * r, Math.max(0.5, c.y * 0.5 + 1.0), c.z + Math.cos(this.angle) * r);
-    const d = Math.hypot(cam.position.x, cam.position.z);
-    if (d > 13.4) { cam.position.x *= 13.4 / d; cam.position.z *= 13.4 / d; }
-    cam.lookAt(c.x, Math.max(0.6, c.y), c.z);
-    g.effects.update(dt * REPLAY_SPEED);
+    // ---- the blow itself: it bleeds again, and it is heard again
+    if (!this.struck && this.playT >= H.t) {
+      this.struck = true;
+      const dir = _ca.copy(H.v).sub(H.a).setY(0.2).normalize();
+      g.effects.blood(_cb.copy(H.v).setY(H.v.y + 0.2), dir, 110, 1.5);
+      g.effects.impact(_cb, 1.4);
+      g.audio.hit?.(1.2, false); g.audio.slash?.(); g.audio.taiko?.(0.7);
+    }
+    // ---- the camera: the profile shot until the blow, then the cut to low and close
+    const second = this.playT >= H.t + 0.05, S = this.shots[second ? 1 : 0];
+    const u = second ? ease((this.playT - H.t - 0.05) / Math.max(0.2, this.t1 - H.t - 0.05)) : ease((this.playT - this.t0) / Math.max(0.2, H.t + 0.05 - this.t0));
+    const cam = g.camera, w = this.clockT + this.playT;
+    cam.position.lerpVectors(S.from, S.to, u);
+    cam.position.x += Math.sin(w * 1.7) * 0.012; cam.position.y += Math.sin(w * 2.3 + 1) * 0.01;      // (held by a hand, not bolted down)
+    const want = S.lookTo ? _cl.lerpVectors(S.lookFrom, S.lookTo, u) : _cl.copy(this.focus.parts.torso.position).setY(Math.max(0.45, this.focus.parts.torso.position.y - 0.2));
+    if (second !== this.wasSecond) { this.wasSecond = second; this.look.copy(S.lookTo ? want : S.lookFrom); }      // a cut is a cut: no swing from one to the other
+    this.look.lerp(want, 1 - Math.exp(-dt * 5));
+    cam.lookAt(this.look);
+    if (S.roll) cam.rotateZ(S.roll * (1 - u * 0.5));
+    cam.fov = S.fov[0] + (S.fov[1] - S.fov[0]) * u; cam.updateProjectionMatrix();
+    g.effects.update(dt * Math.max(sp, 0.2));
   }
 }
 

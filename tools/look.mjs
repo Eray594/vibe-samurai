@@ -4,6 +4,8 @@
 //   node tools/look.mjs before               ... into .look/before/
 //   node tools/look.mjs now perks phone      only the scenes whose name contains one of these words
 //   node tools/look.mjs --diff before now    which scenes differ, and by how much (a changed pixel: any channel off by > 24)
+//   node tools/look.mjs --film fall --js "<js>" [--frames 6] [--every 8] [--size 640x360]
+//                                            a film strip into .look/film/: the snippet starts something, then a picture every few frames
 //   node tools/look.mjs --list               the scenes there are
 //   GPU=1 node tools/look.mjs ...            on the real graphics card instead of the software renderer (to measure frame times)
 //   node tools/look.mjs --eval "<js>" [--map cliff] [--size 844x390] [--touch] [--png out.png]
@@ -185,6 +187,21 @@ if (js !== null) {
   const v = await run(js);
   if (v !== null && v !== undefined) console.log(typeof v === 'string' ? v : JSON.stringify(v, null, 1));
   if (png) { await shoot(resolve(png)); console.log('→', png); }
+  finish(0);
+}
+
+// a film strip: the snippet sets something going (and the camera), then a picture every few frames
+const film = flag('--film');
+if (film !== null) {
+  const frames = Number(flag('--frames') || 6), every = Number(flag('--every') || 8), size = (flag('--size') || '640x360').split('x').map(Number), setup = flag('--js') || '';
+  await open({ map: flag('--map'), size, touch: false });
+  const fdir = join(OUT, 'film'); mkdirSync(fdir, { recursive: true });
+  await run(setup);
+  for (let i = 0; i < frames; i++) {
+    await shoot(join(fdir, `${film}-${String(i).padStart(2, '0')}.png`));
+    await evaluate(`(async () => { ${prelude}\n const draw = () => { g.composer.render = realRender; step(1); g.composer.render = () => {}; }; step(${every - 1}); draw(); })()`);
+  }
+  console.log(`${frames} Bilder in ${fdir} (${film}-00 …)`);
   finish(0);
 }
 

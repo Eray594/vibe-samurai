@@ -111,7 +111,7 @@ export class Menu {
         <label>Mausempfindlichkeit <input type="range" id="set-sens" min="0.3" max="2.5" step="0.05"><b id="set-sens-v"></b></label>
         <label>Lautstärke <input type="range" id="set-volume" min="0" max="1" step="0.05"><b id="set-volume-v"></b></label>
         <label class="chk"><input type="checkbox" id="set-blood"> Blut und Blutlachen</label>
-        <label class="chk"><input type="checkbox" id="set-voices"> Stimmen der Kämpfer (Schreie, Stöhnen)</label>
+        <label class="chk"><input type="checkbox" id="set-voices"> Stimmen der Kämpfer (Schreie, Stöhnen) <button id="voice-test" type="button">Probe hören</button></label>
         <label class="chk"><input type="checkbox" id="set-standoff"> Duell-Eröffnung (ziehen, wenn der Gegner zuckt)</label>
         <label class="chk"><input type="checkbox" id="set-replay"> Wiederholung des Todesstoßes</label>
         <label class="chk"><input type="checkbox" id="set-aimCuts"> Hiebrichtung per Mausbewegung (Maus kurz ziehen, dann klicken)</label>
@@ -139,6 +139,12 @@ export class Menu {
       inp.addEventListener('change', () => S.set(key, inp.checked));
     }
     $('menu-close').addEventListener('click', () => this.toggle(false));
+    // what the voices sound like, one after the other (and whether anything is heard at all)
+    $('voice-test').addEventListener('click', (e) => {
+      e.preventDefault();
+      game.audio.init();
+      ['scream', 'kiai', 'moan', 'death'].forEach((kind, i) => setTimeout(() => { game.audio.last['cry-' + kind] = undefined; game.audio.cry?.(kind, { pitch: 0.9 + i * 0.08, level: 1 }); }, 150 + i * 1100));
+    });
     $('menu-wipe').addEventListener('click', (e) => {
       // two clicks: this cannot be undone
       if (e.currentTarget.dataset.sure) { game.progress.wipe(); delete e.currentTarget.dataset.sure; e.currentTarget.textContent = 'Fortschritt löschen'; this.refresh(); }

@@ -217,6 +217,70 @@ const far = () => { fresh(0, 11); P.iframeT = 99; };
   K.clear();
 }
 
+// ---- dodging with an opponent locked: round him on an arc, at a steady pace, and not into him
+{
+  const e = dummy('ronin', V(0, 0, 0)); fresh(0, 3); ctl.lock = e; step(20);
+  K.add('KeyA'); step(6); tap('ShiftLeft', 1);
+  const a0 = Math.atan2(P.core.position.x, P.core.position.z); let top = 0, rMin = 9, rMax = 0;
+  for (let i = 0; i < 40; i++) { step(1); top = Math.max(top, Math.hypot(P.core.velocity.x, P.core.velocity.z)); const r = Math.hypot(P.core.position.x, P.core.position.z); rMin = Math.min(rMin, r); rMax = Math.max(rMax, r); }
+  K.clear();
+  const arc = Math.abs(Math.atan2(P.core.position.x, P.core.position.z) - a0) * 57.3, to = e.getPos().sub(P.getPos()).setY(0).normalize();
+  check('Erfasstes Ziel, Schritt zur Seite: ein Bogen um den Gegner, kein Davonschießen', P.dodgeKind === 'pivot' && top < 11.5 && arc > 45 && arc < 120 && rMin > 2.2 && rMax < 4.2, [P.dodgeKind, +top.toFixed(1), Math.round(arc), +rMin.toFixed(1), +rMax.toFixed(1)]);
+  check('… und der Blick bleibt auf ihm', P.forward().dot(to) > 0.9, P.forward().dot(to));
+  fresh(0, 3); ctl.lock = e; step(20); K.add('KeyW'); step(4); tap('ShiftLeft', 1);
+  let near = 9; while (P.dashT > 0) { step(1); near = Math.min(near, P.getPos().distanceTo(e.getPos())); }
+  K.clear();
+  check('Erfasstes Ziel, Schritt nach vorn: er endet vor dem Gegner, nicht in ihm', near > 0.9, near);
+  ctl.lock = null;
+}
+
+// ---- getting up is a movement, not a plank tipping upright; a leg that is hit gives way
+{
+  far(); const e = dummy('ronin', V(0, 0, -3)); step(10);
+  e.goRagdoll(V(2, 1.2, 0).clone(), 'torso', false); e.getUpAt = 2.5; step(90);
+  let up = -1; for (let f = 0; f < 200 && up < 0; f++) { step(1); if (e.state === 'active') up = f; }
+  step(26);
+  const low = e.parts.pelvis.position.y, bent = new (P.getPos().constructor)(0, 1, 0).applyQuaternion(e.parts.torso.quaternion).y;
+  step(120);
+  check('Aufstehen: erst in die Hocke am Boden, vornübergebeugt, dann hoch', up > 0 && low < 0.76 && bent < 0.95 && e.parts.pelvis.position.y > low + 0.14, [up, +low.toFixed(2), +bent.toFixed(2), +e.parts.pelvis.position.y.toFixed(2)]);
+  const y0 = e.parts.pelvis.position.y;
+  cut(e, 3, 9, 0.5); const knelt = e.kneelT; step(20);
+  check('Ein harter Treffer aufs Bein: es knickt ein', knelt > 0.4 && e.state === 'active' && e.parts.pelvis.position.y < y0 - 0.1, [knelt, e.state, y0, e.parts.pelvis.position.y, e.crouch]);
+}
+
+// ---- a kunai stays in cloth and flesh, and rings off plates
+{
+  const throwAt = (e) => { const w = g.launch('kunai', P, V(0, 1.3, -1).clone(), V(0, 0, -1).clone(), 27); g.bodyHit(w, e.core.hs, { other: e.core, shape: e.core.shapes[1], wshape: { hsPart: 'blade' }, point: V(0, 1.3, -2.85).clone(), rel: V(0, 0, -27).clone(), speed: 27 }); return w; };
+  far(); const r = dummy('ronin', V(0, 0, -3)); step(10);
+  throwAt(r);
+  check('Kunai: bleibt im ungepanzerten Gegner stecken und verwundet ihn', r.stuck.length === 1 && r.inj.parts.torso > 0.08 && r.inj.bleeding > 0, [r.stuck.length, r.inj.parts.torso]);
+  far(); const m = dummy('samurai', V(0, 0, -3)); step(10);
+  throwAt(m);
+  check('Kunai: prallt an der Rüstung ab', m.stuck.length === 0 && m.inj.parts.torso === 0, [m.stuck.length, m.inj.parts.torso]);
+}
+
+// ---- the blow that ends a fight is shown again: smoothly, from two set-ups, between black bars
+{
+  for (const e of [...g.npcs]) g.removeNpc(e);
+  g.settings.set('replay', true); g.replay.lastAt = -99;
+  fresh(0, 4); const e = dummy('ronin', V(0, 0, 1.5)); step(140);
+  e.inj.armor = 0; cut(e, 2, 17, 1.75);
+  let n = 0; while (!g.replay.active && n++ < 300) step(1);
+  check('Der Hieb, der den Kampf beendet, wird noch einmal gezeigt', g.replay.active && e.dead && document.body.classList.contains('cine'), [g.replay.active, e.dead, n]);
+  const seen = new Set(), cams = []; let jump = 0, last = null, slow = 0;
+  for (let i = 0; i < 600 && g.replay.active; i++) {
+    step(1);
+    if (!g.replay.active) break;
+    const c = g.camera.position; if (last && c.distanceTo(last) > 1.5) jump++; last = c.clone(); cams.push(c.y);
+    // (after the cut the film runs at an eighth of the speed: the falling body must still move in every picture)
+    if (jump) { const t = e.parts.torso.position, q = e.parts.torso.quaternion; seen.add(t.x.toFixed(5) + t.y.toFixed(5) + q.x.toFixed(5)); slow++; }
+  }
+  check('Wiederholung: fließend zwischen den aufgezeichneten Bildern, nicht ruckweise', slow > 60 && seen.size > slow * 0.85 && cams.length > 90, [seen.size, slow, cams.length]);
+  check('Wiederholung: zwei Einstellungen mit einem Schnitt auf den Hieb', jump === 1, jump);
+  check('Wiederholung: danach ist alles wie vorher', !g.replay.active && !document.body.classList.contains('cine') && Math.abs(g.camera.fov - 62) < 12 && P.parts.torso.visible, [g.replay.active, g.camera.fov]);
+  step(30);
+}
+
 // ---- the new sounds can be rendered, are audible and do not clip
 {
   const A = new g.audio.constructor(), ctx = new OfflineAudioContext(2, 44100 * 4, 44100);

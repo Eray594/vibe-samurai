@@ -409,3 +409,11 @@ body.touch #player-panel { transform: scale(0.8); transform-origin: left bottom;
 }
 body.shopping #help, body.shopping #help-open { display: none; }
 body.touch #score { left: 180px; bottom: 26px; }
+
+/* ---- the last blow shown again: black bars above and below, nothing of the game's own display */
+body::before, body::after { content: ''; position: fixed; left: 0; right: 0; height: 0; background: #000; z-index: 8; pointer-events: none; transition: height .35s ease; }
+body::before { top: 0; } body::after { bottom: 0; }
+body.cine::before, body.cine::after { height: 11vh; }
+body.cine #hud, body.cine #topbar, body.cine #labels, body.cine #callouts, body.cine #reticle, body.cine #kanji, body.cine #touch, body.cine #def-hud, body.cine #def-shop, body.cine #perks { opacity: 0; transition: opacity .2s; pointer-events: none; }
+body.cine #replay { z-index: 9; }
+body.cine #kanji, body.cine #death, body.cine #prompt { visibility: hidden; }
