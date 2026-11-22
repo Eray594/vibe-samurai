@@ -109,6 +109,7 @@ const T = {
 const C = { v: new CANNON.Vec3(), v2: new CANNON.Vec3(), q: new CANNON.Quaternion() };
 
 const WOUND_GEO = new THREE.SphereGeometry(1, 10, 6);
+WOUND_GEO.userData.shared = true;
 const WOUND_MAT = {
   blood: new THREE.MeshStandardMaterial({ color: 0x4a0404, roughness: 0.22, metalness: 0.1 }),
   bruise: new THREE.MeshStandardMaterial({ color: 0x1c1a1a, roughness: 0.6, metalness: 0.5 }),
@@ -860,6 +861,13 @@ export class Samurai {
   jump(boost = 1) {
     if (this.state !== 'active' || this.airborne || this.inj.legStrength < 0.45 || this.heldBy || this.mountH > 0 || this.bound) return false;
     this.core.velocity.y = 5.3 * boost * (0.6 + 0.4 * this.inj.legStrength);
+    if (this.dashT > 0) {
+      // a jump out of a dodge does not carry the dodge's speed into the air (a second of flight at that pace was a
+      // nine-metre leap, straight over the edge of a map that has one): it leaves the ground at a run
+      const v = this.core.velocity, sp = Math.hypot(v.x, v.z), cap = 7.6 * this.speedMul;
+      if (sp > cap) { v.x *= cap / sp; v.z *= cap / sp; }
+      this.dashT = 0; this.glideT = 0;
+    }
     this.airborne = true;
     this.slideT = 0;
     return true;
@@ -1113,7 +1121,7 @@ export class Samurai {
     if (this.stuck.length > 8) this.unstick(this.stuck.shift());
     return m;
   }
-  unstick(m) { m.parent?.remove(m); m.traverse((o) => { if (o.geometry) o.geometry.dispose(); }); }
+  unstick(m) { m.parent?.remove(m); }      // (its geometry is shared with every other arrow)
 
   restoreLimbs() {
     for (const n of this.severed) this.parts[n].visible = true;
@@ -1212,7 +1220,7 @@ export class Samurai {
     const { parts, mats } = buildParts(style);
     for (const n of PART_NAMES) {
       const g = this.parts[n];
-      g.traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+      g.traverse((o) => { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); });
       g.clear();
       for (const c of [...parts[n].children]) g.add(c);
     }
@@ -1625,7 +1633,7 @@ export class Samurai {
     else this.game.world.removeBody(this.core);
     for (const n of PART_NAMES) this.game.scene.remove(this.parts[n]);
     if (this.weapon) this.weapon.dispose();
-    for (const n of PART_NAMES) this.parts[n].traverse((o) => { if (o.geometry) o.geometry.dispose(); });
+    for (const n of PART_NAMES) this.parts[n].traverse((o) => { if (o.geometry && !o.geometry.userData.shared) o.geometry.dispose(); });
     // materials are shared with severed limb clones; let GC handle them
   }
 }

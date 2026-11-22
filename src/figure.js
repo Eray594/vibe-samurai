@@ -225,6 +225,13 @@ const strawRelief = () => reliefTex('n_straw', 64, (x, y) => Math.abs(Math.sin((
 /** Skin: pores and the fine lines of a face. */
 const skinRelief = () => { const n = tileNoise(128, 16, 5), n2 = tileNoise(128, 40, 9); return reliefTex('n_skin', 128, (x, y) => n(x, y) * 0.6 + n2(x, y) * 0.4, 1.1); };
 
+/** Every face these styles can come with (each skin tone, bearded or not ...), painted now rather than when the first such man walks in. */
+export function faceTextures(styles) {
+  const out = new Set();
+  for (const st of styles) for (const skin of st.skin != null ? [st.skin] : SKIN_TONES) out.add(faceTex(skin, { beard: st.beard || 0, stern: st.armor != null || st.stern, scar: st.scar }));
+  return [...out];
+}
+
 // ------------------------------------------------------------------ materials
 export function makeMaterials(style) {
   const armored = style.armor != null;
@@ -304,8 +311,32 @@ function bake(src, paint) {
 }
 
 // ------------------------------------------------------------------ the figure
+/**
+ * The parts of a figure in this style. Modelling one takes a few milliseconds (thousands of vertices pushed in and out,
+ * merged, baked), which shows as a hitch when a wave of opponents arrives; so each style is modelled once, and every
+ * further fighter in it shares that geometry and only gets materials of its own (his skin, his face, his flash when hit).
+ */
+const TEMPLATES = new WeakMap();
 export function buildParts(style) {
   const m = makeMaterials(style);
+  let tpl = TEMPLATES.get(style);
+  if (!tpl) {
+    const keyOf = new Map();
+    for (const k in m) if (m[k].isMaterial) keyOf.set(m[k], k);
+    const baked = model(style, m);
+    tpl = {};
+    for (const n of PART_NAMES) tpl[n] = baked[n].children.map((mesh) => { mesh.geometry.userData.shared = true; return [mesh.geometry, keyOf.get(mesh.material), mesh.castShadow]; });
+    TEMPLATES.set(style, tpl);
+  }
+  const P = {};
+  for (const n of PART_NAMES) {
+    const g = P[n] = new THREE.Group();
+    for (const [geo, key, cast] of tpl[n]) { const mesh = new THREE.Mesh(geo, m[key]); mesh.castShadow = cast; mesh.receiveShadow = true; g.add(mesh); }
+  }
+  return { parts: P, mats: m };
+}
+
+function model(style, m) {
   const armored = style.armor != null;
   const P = {};
   const add = (part, mesh, x = 0, y = 0, z = 0) => { mesh.position.set(x, y, z); part.add(mesh); return mesh; };
@@ -584,5 +615,5 @@ export function buildParts(style) {
   P.thighR = thigh(); P.thighL = thigh();
   P.shinR = shin(); P.shinL = shin();
   for (const n of PART_NAMES) P[n] = bake(P[n], m.paint);
-  return { parts: P, mats: m };
+  return P;
 }

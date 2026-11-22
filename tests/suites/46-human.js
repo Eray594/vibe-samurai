@@ -181,6 +181,29 @@ const far = () => { fresh(0, 11); P.iframeT = 99; };
   P.setWeapon('katana');
 }
 
+// ---- Shift: a tap is the dodge, holding it is the run (and the run does not begin with a lunge)
+{
+  fresh(0, 4); K.add('KeyW'); K.add('ShiftLeft'); press('ShiftLeft');
+  const d0 = ctl.lastDodgeAt; let top = 0, ran = false;
+  for (let i = 0; i < 90; i++) { step(1); top = Math.max(top, Math.hypot(P.core.velocity.x, P.core.velocity.z)); ran = ran || P.sprinting; }
+  check('Shift halten: Sprint, ohne Ausweichschritt davor', ctl.lastDodgeAt === d0 && ran && top < 10 && top > 7, [ctl.lastDodgeAt - d0, ran, top]);
+  K.delete('ShiftLeft'); step(3);
+  check('… und Loslassen nach langem Halten ist auch kein Ausweichen', ctl.lastDodgeAt === d0);
+  K.clear();
+  fresh(0, 4); K.add('KeyA'); K.add('ShiftLeft'); press('ShiftLeft'); step(5);
+  const held = ctl.lastDodgeAt; K.delete('ShiftLeft'); step(2);
+  check('Shift antippen: der Ausweichschritt kommt beim Loslassen', held < 0 && ctl.lastDodgeAt > held && P.dashT > 0, [held, ctl.lastDodgeAt]);
+  K.clear();
+}
+
+// ---- a jump out of a dodge is a jump, not a flight
+{
+  const leap = (pre) => { fresh(0, 10); K.add('KeyW'); pre(); press('Space'); const z0 = P.core.position.z; let n = 0; do { step(1); n++; } while (P.airborne && n < 200); K.clear(); return z0 - P.core.position.z; };
+  const run = leap(() => { K.add('ShiftLeft'); step(40); });
+  const dodge = [1, 4, 8].map((d) => leap(() => { press('ShiftLeft'); step(d); }));
+  check('Sprung aus dem Ausweichschritt: nicht weiter als aus dem Sprint', Math.max(...dodge) < run + 0.8 && run < 7, [run, ...dodge].map((v) => +v.toFixed(1)));
+}
+
 // ---- nothing can hold a dodge at its top speed
 {
   fresh(0, 4); K.add('KeyA'); tap('ShiftLeft', 1);
@@ -204,6 +227,12 @@ const far = () => { fresh(0, 11); P.iframeT = 99; };
   const buf = await ctx.startRendering(), d = buf.getChannelData(0);
   let peak = 0, bad = 0, loud = 0;
   for (let i = 0; i < d.length; i++) { const v = Math.abs(d[i]); if (!(v >= 0)) bad++; if (v > peak) peak = v; if (v > 0.02) loud++; }
+  // a voice has to be heard over what happens at the same moment: louder than what is left of the blow when it starts
+  const one = async (fn) => { const B = new g.audio.constructor(), c = new OfflineAudioContext(2, 44100 * 2, 44100); B.attach(c, true); B.music = false; B.amb.gain.value = 0; B.lead = 0.2; fn(B); return (await c.startRendering()).getChannelData(0); };
+  const rms = (x, a, b) => { let s = 0; for (let i = Math.floor(a * 44100); i < Math.floor(b * 44100); i++) s += x[i] * x[i]; return Math.sqrt(s / ((b - a) * 44100)); };
+  const tail = rms(await one((B) => { B.hit(1.2, false); B.slash(); B.thud(0.9); }), 0.33, 0.7);
+  const scream = rms(await one((B) => B.cry('scream', { level: 0.6, delay: 0.13 })), 0.33, 0.7), death = rms(await one((B) => B.cry('death', { level: 0.6, delay: 0.2 })), 0.4, 0.8);
+  check('Stimmen: deutlich lauter als der Ausklang des Treffers, über dem sie liegen', scream > tail * 3 && death > tail * 2 && scream > 0.05, [tail, scream, death].map((v) => +v.toFixed(4)));
   check('Die neuen Stimmen und Geräusche: hörbar, endlich, ohne Übersteuern', n === 5 && bad === 0 && peak > 0.05 && peak <= 0.91 && loud > 4000, [n, bad, +peak.toFixed(3), loud]);
 }
 check('Am Ende ist alles an seinem Platz', sane() === '', sane());

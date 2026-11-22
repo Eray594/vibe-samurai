@@ -230,13 +230,31 @@ function buildKunai(g, def, bladeMat) {
 }
 
 /** Visual model in handle space (not shifted by ycom). */
+const MODELS = new Map(), BLADE = new THREE.MeshStandardMaterial();      // (BLADE: stands for "this weapon's own blade material")
 export function buildWeaponModel(def, bladeMat = MAT.steel) {
-  const g = new THREE.Group();
-  if (def.thrown) buildKunai(g, def, bladeMat);
-  else if (def.type === 'sword') buildSword(g, def, bladeMat);
-  else if (def.type === 'polearm') buildPolearm(g, def, bladeMat);
-  else buildClub(g, def);
-  return mergeStatic(g);
+  // modelled once per kind of weapon (the blade alone is an extrusion of dozens of points); every further one shares the geometry
+  let tpl = MODELS.get(def.key);
+  if (!tpl) {
+    const g = new THREE.Group();
+    if (def.thrown) buildKunai(g, def, BLADE);
+    else if (def.type === 'sword') buildSword(g, def, BLADE);
+    else if (def.type === 'polearm') buildPolearm(g, def, BLADE);
+    else buildClub(g, def);
+    mergeStatic(g);
+    tpl = [];
+    g.traverse((o) => {
+      if (!o.isMesh) return;
+      o.updateWorldMatrix(true, false);
+      const geo = o.geometry.clone().applyMatrix4(o.matrixWorld);
+      geo.userData.shared = true;
+      tpl.push([geo, o.material, o.castShadow, o.receiveShadow]);
+      o.geometry.dispose();
+    });
+    MODELS.set(def.key, tpl);
+  }
+  const out = new THREE.Group();
+  for (const [geo, mat, cast, recv] of tpl) { const mesh = new THREE.Mesh(geo, mat === BLADE ? bladeMat : mat); mesh.castShadow = cast; mesh.receiveShadow = recv; out.add(mesh); }
+  return out;
 }
 
 /** Collision shapes, tagged so a hit with the shaft or grip counts as a blunt knock, not a cut. */
@@ -416,7 +434,6 @@ export class Weapon {
   dispose() {
     this.game.world.removeBody(this.body);
     this.game.scene.remove(this.mesh);
-    this.mesh.traverse((o) => { if (o.geometry) o.geometry.dispose(); });      // (the model was built for this one weapon)
     this.bladeMat.dispose();
     this.trail?.dispose();
   }

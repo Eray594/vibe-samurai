@@ -277,7 +277,8 @@ export class Breakables {
       P(G.lLamp, M.stone, 0, 1.39, 0, 0, 0, 0, 12, 0.15, 0.15, 0.15);
       P(G.lRoof, M.stone, 0, 1.7, 0, 0, 0, 0, 22, 0.33, 0.12, 0.33);
       for (const m of item.upper) item.mesh.remove(m);
-      if (item.light) { scene.remove(item.light); item.light = null; }
+      // (the light goes dark but stays in the scene: taking a light out makes the graphics card rebuild every shader, a freeze mid-fight)
+      if (item.light) { item.light.intensity = 0; item.deadLight = item.light; item.light = null; }
     }
     world.removeBody(b);
     if (item.kind === 'lantern') {
@@ -348,6 +349,7 @@ export class Breakables {
       if (it.body) world.removeBody(it.body);
       this.drop(it);
       if (it.light) scene.remove(it.light);
+      if (it.deadLight) scene.remove(it.deadLight);
     }
     this.items = [];
     this.pending = [];

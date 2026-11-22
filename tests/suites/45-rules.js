@@ -103,4 +103,21 @@ play('duel'); step(5);
   check('Blut: auf dem Podest bleiben Flecken oben liegen', hs.some((y) => Math.abs(y - p.top) < 0.05), [hs.length, hs.slice(0, 4), p.top]);
   check('Blut: was daneben fällt, liegt am Boden', hs.every((y) => Math.abs(y - p.top) < 0.05 || y < 0.05), hs.filter((y) => y > 0.05 && Math.abs(y - p.top) > 0.05).slice(0, 4));
 }
+// ---- the automatic quality: only steps down for a rate that is really low, and takes the step back if it bought nothing
+{
+  const Q = g.quality, warm = g.prewarm; g.prewarm = () => {};          // (rebuilding every shader takes seconds in this test browser)
+  const run = (fps, seconds) => { for (let i = 0; i < fps * seconds; i++) Q.update(1 / fps); };
+  const start = () => { Q.mode = 'auto'; Q.ceiling = 5; Q.ceilT = 0; Q.lockT = 0; Q.trial = null; Q.refresh = 60; Q.apply(3); };
+  start(); run(144, 5); run(105, 20);
+  check('Auto-Grafik: 105 Bilder/s auf einem 144-Hz-Schirm sind kein Grund herunterzuregeln', Q.level === 3 && Q.refresh > 130, [Q.level, Q.refresh]);
+  start(); run(60, 4); run(40, 7);
+  const down = Q.level;
+  run(40, 6);
+  check('Auto-Grafik: bleibt die Bildrate niedrig, geht es eine Stufe herunter – und wieder zurück, wenn das nichts bringt', down === 2 && Q.level === 3, [down, Q.level]);
+  run(40, 30);
+  check('Auto-Grafik: … und danach lässt sie es bleiben (keine Spirale nach unten)', Q.level === 3, Q.level);
+  start(); run(60, 4); run(40, 7); run(58, 8);
+  check('Auto-Grafik: hilft die niedrigere Stufe, bleibt sie', Q.level === 2, Q.level);
+  start(); g.prewarm = warm;
+}
 check('Am Ende ist alles an seinem Platz', sane() === '', sane());

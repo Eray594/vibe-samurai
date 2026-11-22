@@ -5,6 +5,7 @@ import { L, D, POSES, guardFor, BLOCK_EDGE, GUARD, MOVESETS, AttackRunner, DEFLE
 /** The blade home in the scabbard at the left hip (the scabbard itself is part of the figure, see figure.js). */
 const SHEATH = { hand: L(-0.158, 0.175, 0.306), dir: D(-0.1, -0.41, -0.9) };
 const CALM_AFTER = 2.5, FOE_NEAR = 9;
+const TAP_MAX = 0.2;          // seconds: Shift let go again within this is a dodge, held longer it is the run
 
 const SENS_LOOK = 0.0022;
 const SENS_HAND = 0.0027;
@@ -292,7 +293,7 @@ export class PlayerController {
     this.iaiCharge = 0;
     this.iaiCd = 0;
     this.stamina = 1; this.exhaustT = 0; this.plunge = null; this.dodgeBuf = 0;
-    this.calmT = 0; this.sheathed = false;
+    this.calmT = 0; this.sheathed = false; this.shiftArmed = false; this.shiftT = 0;
   }
 
   /** Called while the player is down: only the camera moves. */
@@ -526,7 +527,17 @@ export class PlayerController {
     }
     // a dodge asked for a moment too early (still recovering from the last step, a kick, a landing) is not lost:
     // it is taken as soon as the feet are free
-    const shiftNow = (pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken;
+    // Shift does two things: tapped it is the dodge, held it is the run. So a press only becomes a dodge once the key
+    // has been let go again quickly — otherwise every reach for the run would throw the fighter forward first.
+    const shiftHeld = inp.down('ShiftLeft') || inp.down('ShiftRight');
+    let shiftNow = false;
+    if (pressed.has('ShiftLeft') || pressed.has('ShiftRight')) {
+      if (shiftHeld) { this.shiftT = 0; this.shiftArmed = true; } else shiftNow = true;      // (pressed and already up again: a tap in one go)
+    } else if (this.shiftArmed) {
+      if (!shiftHeld) { this.shiftArmed = false; shiftNow = true; }
+      else { this.shiftT += dt / Math.max(game.timeScale || 1, 0.1); if (this.shiftT > TAP_MAX) this.shiftArmed = false; }       // held: it is the run
+    }
+    shiftNow = shiftNow && !broken;
     this.dodgeBuf = shiftNow ? 0.16 : Math.max(0, (this.dodgeBuf || 0) - dt);
     if (broken) this.dodgeBuf = 0;
     if (shiftNow || this.dodgeBuf > 0) {
@@ -747,7 +758,7 @@ export class PlayerController {
     k.atk = this.runner.a;
 
     // ---------- sprint
-    const sprint = shift && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne && k.slideT <= 0 && !this.exhausted;
+    const sprint = shift && !this.shiftArmed && moving && k.dashT <= 0 && this.mode === 'guard' && !broken && !k.airborne && k.slideT <= 0 && !this.exhausted;
     k.sprinting = sprint;
     if (sprint) { speedMul *= 1.62; this.spend(dt * 0.085); }
     if (k.stuckT > 0) speedMul *= 0.15;

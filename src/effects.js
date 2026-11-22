@@ -1089,6 +1089,20 @@ export class Effects {
     this.flash.intensity = this.flashI;
   }
 
+  /**
+   * Show one of everything this class can draw (returns a function that puts it back). Used once at start-up, so the
+   * graphics card builds these shaders then and not in the middle of the first fight.
+   */
+  prewarm() {
+    const s = this.sprites, c = this.chips, d = this.decalMesh;
+    const was = [s.mesh.visible, s.geo.instanceCount, c.mesh.visible, c.mesh.count, d.visible, d.count];
+    s.mesh.visible = c.mesh.visible = d.visible = true;
+    s.geo.instanceCount = Math.max(1, s.geo.instanceCount); c.mesh.count = Math.max(1, c.mesh.count); d.count = Math.max(1, d.count);
+    const t = this.createTrail(0xffffff);
+    t.mesh.visible = true;
+    return () => { [s.mesh.visible, s.geo.instanceCount, c.mesh.visible, c.mesh.count, d.visible, d.count] = was; t.dispose(); };
+  }
+
   /** Height of the picture in real pixels (so the thinnest sparks can be kept from vanishing between them). */
   setPixelScale(h) { if (h > 0 && fin(h)) this.sprites.pxH = h; }
 

@@ -568,20 +568,21 @@ export class AudioFX {
    * fading), 'death' (the last sound, sinking), 'moan' (lying wounded), 'kiai' (the shout that goes with a blow).
    * `pitch` is the man's own voice (0.7 deep .. 1.3 high). Each kind is rate-limited, so a melee does not turn into a choir.
    */
-  cry(kind = 'scream', { pitch = 1, level = 1, pan = 0 } = {}) {
+  cry(kind = 'scream', { pitch = 1, level = 1, pan = 0, delay = 0 } = {}) {
     // (a voice made of oscillators soon sounds like a machine: these are mostly breath forced through the throat,
     // with only as much tone as a strained voice has, and they are short)
     const K = {
-      scream: { gap: 1.2, dur: [0.28, 0.5], f: [165, 230], up: 1.3, end: 0.68, rough: [34, 60, 0.6], noise: 1.6, tone: 0.5, vow: [[760, 1], [1250, 0.7], [2700, 0.4]], amp: 0.34 },
-      fall: { gap: 1.2, dur: [0.9, 1.3], f: [180, 240], up: 1.2, end: 0.62, rough: [28, 50, 0.45], noise: 1.2, tone: 0.6, vow: [[760, 1], [1200, 0.7], [2700, 0.3]], amp: 0.36 },
-      death: { gap: 0.8, dur: [0.45, 0.8], f: [110, 150], up: 1.04, end: 0.55, rough: [16, 30, 0.7], noise: 2.0, tone: 0.3, vow: [[520, 1], [950, 0.5], [2300, 0.2]], amp: 0.3 },
-      moan: { gap: 2.6, dur: [0.6, 1.0], f: [95, 130], up: 1.05, end: 0.85, rough: [8, 14, 0.3], noise: 1.1, tone: 0.45, vow: [[450, 1], [900, 0.4], [2200, 0.12]], amp: 0.22 },
-      kiai: { gap: 0.8, dur: [0.12, 0.2], f: [150, 200], up: 1.2, end: 1.05, rough: [40, 70, 0.5], noise: 1.8, tone: 0.45, vow: [[700, 1], [1150, 0.6], [2500, 0.35]], amp: 0.26 },
+      scream: { gap: 1.2, dur: [0.28, 0.5], f: [165, 230], up: 1.3, end: 0.68, rough: [34, 60, 0.6], noise: 1.6, tone: 0.5, vow: [[760, 1], [1250, 0.7], [2700, 0.4]], amp: 1.7 },
+      fall: { gap: 1.2, dur: [0.9, 1.3], f: [180, 240], up: 1.2, end: 0.62, rough: [28, 50, 0.45], noise: 1.2, tone: 0.6, vow: [[760, 1], [1200, 0.7], [2700, 0.3]], amp: 1.6 },
+      death: { gap: 0.8, dur: [0.45, 0.8], f: [110, 150], up: 1.04, end: 0.55, rough: [16, 30, 0.7], noise: 2.0, tone: 0.3, vow: [[520, 1], [950, 0.5], [2300, 0.2]], amp: 1.5 },
+      moan: { gap: 2.6, dur: [0.6, 1.0], f: [95, 130], up: 1.05, end: 0.85, rough: [8, 14, 0.3], noise: 1.1, tone: 0.45, vow: [[450, 1], [900, 0.4], [2200, 0.12]], amp: 1.1 },
+      kiai: { gap: 0.8, dur: [0.12, 0.2], f: [150, 200], up: 1.2, end: 1.05, rough: [40, 70, 0.5], noise: 1.8, tone: 0.45, vow: [[700, 1], [1150, 0.6], [2500, 0.35]], amp: 1.3 },
     }[kind];
     if (!K) return false;
     const dur = rand(K.dur[0], K.dur[1]);
-    const t = this.begin('cry-' + kind, K.gap, dur + 0.15, kind === 'moan');
-    if (t === null) return false;
+    const t0 = this.begin('cry-' + kind, K.gap, dur + 0.15 + delay, kind === 'moan');
+    if (t0 === null) return false;
+    const t = t0 + Math.max(0, delay);          // (a voice comes a moment after the blow that caused it, or the blow drowns it)
     const ctx = this.ctx, p = clamp(pitch, 0.6, 1.4), L = clamp(level, 0, 1.2), out = this.panned(pan);
     if (L < 0.02) return false;
     const f0 = rand(K.f[0], K.f[1]) * p, end = t + dur;

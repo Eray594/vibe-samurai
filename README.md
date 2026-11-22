@@ -25,6 +25,10 @@ macOS/Linux nehmen, was vorhanden ist: `python3`, `node`, `php` oder `ruby`. Von
 python3 -m http.server 8765      # oder: node tools/serve.mjs
 ```
 
+**Flüssig von Anfang an:** Beim Laden werden alle Figuren und Waffen einmal modelliert und alle Shader vorab
+übersetzt; im Spiel selbst muss die Grafikkarte nichts mehr nachbauen (das waren die kurzen Hänger beim ersten
+Sprung, beim ersten neuen Gegner, beim ersten Blut).
+
 **Leistung:** Der Knopf „Auto · … fps“ in der Leiste zeigt die Bildrate. In der Einstellung *Auto*
 senkt oder hebt das Spiel Auflösung, Schatten, Leuchteffekt und Laternenlichter von selbst, um die
 Bildrate des Bildschirms zu halten. Ein Klick schaltet auf feste Stufen (Niedrig, Mittel, Hoch).
@@ -134,7 +138,7 @@ Die vollständige Tastenbelegung:
 | Taste | Aktion |
 |---|---|
 | WASD · Maus | bewegen (relativ zur Kamera) · Kamera |
-| Shift | Ausweichschritt (kurz unverwundbar; ein etwas zu früher Druck wird nachgeholt) · gehalten: Sprint · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
+| Shift | **antippen:** Ausweichschritt (kurz unverwundbar; ein etwas zu früher Druck wird nachgeholt) · **halten:** Sprint, ohne Ausweichschritt davor · im letzten Moment: **perfektes Ausweichen** (Zeitlupe + freier Konter) |
 | Shift in einen Stoß hinein | **Klinge niedertreten**: der Fuß landet auf der Waffe, die Haltung des Gegners leidet schwer |
 | Space | Sprung – Angriff in der Luft = Sturzhieb · an der Mauer nochmal Space: **Wandsprung** · im Sprint gegen die Mauer: höherer Sprung |
 | Space gegen das Podest | **Klettern**: über die Stufe geht es von selbst aufs Deck; vom Boden aus greifst du die Kante und hängst – Space zieht hoch, S lässt los |
@@ -208,6 +212,7 @@ Wiederholung an/aus.
 - **Schwung.** Ein schwerer Hieb, der nichts trifft, reißt den Körper herum und braucht länger
   zurück in die Deckung. Das gilt auch für Gegner: nach einem ausgewichenen 危-Hieb sind sie offen.
 - **Gleichgewicht.** Wer aus dem Gleichgewicht ist, schwankt sichtbar und stolpert ein paar Schritte.
+- **Sprung aus dem Schritt.** Ein Sprung direkt nach dem Ausweichschritt nimmt dessen Tempo nicht mit in die Luft.
 - **Rolle.** Leichte Skins (Rōnin, Schatten, Weißer Geist) rollen beim Ausweichen über die Schulter;
   schwere machen einen kurzen Schritt.
 - **Trägheit.** Wer aus dem Sprint scharf wendet, muss erst abbremsen.
@@ -348,6 +353,7 @@ node tools/look.mjs before            # rund 40 feste Szenen als Bilder der ganz
 node tools/look.mjs now               # … nach einer Änderung noch einmal
 node tools/look.mjs --diff before now # welche Bilder sich geändert haben, und wie stark
 node tools/look.mjs --eval "<js>"     # einen Schnipsel im Spiel ausführen und das Ergebnis ausgeben
+node tools/live.mjs                   # das Spiel wirklich laufen lassen (echte Bildschleife, Tasten, Grafikkarte) und jedes Bild messen
 node tools/index.mjs                  # Karte des Codes: jede Datei, ihre Klassen und Methoden mit Zeilennummern
 node tools/index.mjs --find dash      # wo ein Wort vorkommt
 ```

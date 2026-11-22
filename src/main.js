@@ -9,7 +9,8 @@ import * as CANNON from 'cannon-es';
 import { createWorld, FIXED_DT, pointVelocity, rand, clamp, dampFactor, RENDER, syncMesh } from './physics.js';
 import { Samurai } from './samurai.js';
 import { ZONE_NAMES } from './injury.js';
-import { WEAPONS, WEAPON_ORDER, Weapon } from './weapons.js';
+import { WEAPONS, WEAPON_ORDER, Weapon, buildWeaponModel } from './weapons.js';
+import { buildParts, faceTextures } from './figure.js';
 import { Arena, ARENA_R } from './arena.js';
 import { CliffArena } from './cliffscape.js';
 import { chosenMap } from './maps.js';
@@ -185,6 +186,7 @@ class Game {
     this.front = new Front(this);
     this.refreshSkins();
     this.quality = new Quality(this);
+    this.prewarm();
     this.spawnWave(true);
     addEventListener('resize', () => this.resize());
     this.clock = new THREE.Clock();
@@ -192,6 +194,44 @@ class Game {
   }
 
   /** Everyone in the yard. (Asked for many times a frame: the list is only made anew when someone came or went.) */
+  /**
+   * Before the first fight: model every kind of fighter and weapon once, and have the graphics card build the shader
+   * for everything that will ever appear (a new kind of opponent, the first splinters, the first blood on the floor,
+   * rain, the fort). Done lazily, each of these is a freeze of its own in the middle of play — long ones on some systems.
+   */
+  prewarm() {
+    const tmp = new THREE.Group(), undo = [];
+    const styles = new Set([...Object.values(SKINS), ALLY_STYLE]);
+    for (const key of TYPE_ORDER) for (const st of TYPES[key].styles) styles.add(st);
+    for (const st of styles) { const { parts } = buildParts(st); for (const n in parts) tmp.add(parts[n]); }
+    for (const key in WEAPONS) tmp.add(buildWeaponModel(WEAPONS[key]));
+    if (!this.warmed) for (const t of faceTextures(styles)) this.renderer.initTexture(t);      // (and into the graphics card: an upload is a hitch too)
+    this.warmed = true;
+    // things made on the spot elsewhere (wounds, traps, a horse, a bow, a rope): one of each kind of plain material
+    const box = new THREE.BoxGeometry(0.1, 0.1, 0.1);
+    for (const mat of [new THREE.MeshStandardMaterial({ color: 0x808080 }), new THREE.MeshStandardMaterial({ color: 0x808080, side: THREE.DoubleSide }), new THREE.MeshBasicMaterial({ color: 0x808080 }), new THREE.MeshLambertMaterial({ color: 0x808080 })]) {
+      const m = new THREE.Mesh(box, mat); m.castShadow = m.receiveShadow = true; tmp.add(m);
+    }
+    this.scene.add(tmp);
+    undo.push(this.effects.prewarm());
+    for (const o of [this.weather.rain, this.weather.snow]) { const v = o.visible; o.visible = true; undo.push(() => { o.visible = v; }); }
+    if (!this.defense.built) this.defense.build();
+    this.defense.group.visible = true; undo.push(() => { this.defense.group.visible = this.defense.on; });
+    tmp.traverse((o) => { o.frustumCulled = false; });
+    try {
+      // (the game draws into the composer's buffer, not straight to the screen, and a shader is built for where it draws:
+      // so the same target here; then one real picture, which also builds what throws the shadows)
+      this.renderer.setRenderTarget(this.composer.readBuffer);
+      this.renderer.compile(this.scene, this.camera);
+      this.renderer.setRenderTarget(null);
+      // (everything in it once for real: that also builds what throws the shadows, and puts every model into the graphics card)
+      this.composer.render();
+    } catch { this.renderer.setRenderTarget(null); /* a driver that refuses: it will compile as it goes, as before */ }
+    for (const fn of undo) fn();
+    this.scene.remove(tmp);
+    box.dispose();
+  }
+
   get fighters() {
     if (this._fnpcs !== this.npcs || this._flen !== this.npcs.length) { this._fnpcs = this.npcs; this._flen = this.npcs.length; this._fighters = [this.player, ...this.npcs]; }
     return this._fighters;
@@ -826,8 +866,8 @@ class Game {
       if (ev.includes('broken') || (kind === 'blunt' && sev > 0.5)) this.audio.bone?.(0.5 + sev);
       // a voice only when it is bad: a grunt now and then, a scream for a deep wound, the last sound for some of the dying
       if (!severed) {
-        if (ev.includes('dead')) { if (zone !== 'head') this.cryOut(k, 'death', 0.55); }
-        else if (sev > 0.45) this.cryOut(k, 'scream', 0.6);
+        if (ev.includes('dead')) { if (zone !== 'head') this.cryOut(k, 'death', 0.8); }
+        else if (sev > 0.35) this.cryOut(k, 'scream', 0.75);
         else if (sev > 0.2 && Math.random() < 0.3 && this.time - k.cryAt > 1.6) { this.audio.voice?.('pain', 0.5 + sev); k.cryAt = this.time; }
       }
       if (sev > 0.12) {
@@ -922,8 +962,9 @@ class Game {
     const at = k.parts.torso.position, cam = this.camera, e = cam.matrixWorld.elements;
     const dx = at.x - cam.position.x, dz = at.z - cam.position.z, d = Math.hypot(dx, dz);
     if (d > 26) return false;
-    const level = (k.isPlayer ? 0.8 : 1) / (1 + d * d * 0.012);
-    if (!this.audio.cry?.(kind, { pitch: k.voicePitch, level, pan: clamp((dx * e[0] + dz * e[2]) / Math.max(d, 1.5) * 0.8, -0.8, 0.8) })) return false;
+    const level = (k.isPlayer ? 0.8 : 1) / (1 + d * d * 0.006);
+    const delay = kind === 'death' ? 0.2 : kind === 'scream' ? 0.13 : 0;
+    if (!this.audio.cry?.(kind, { pitch: k.voicePitch, level, delay, pan: clamp((dx * e[0] + dz * e[2]) / Math.max(d, 1.5) * 0.8, -0.8, 0.8) })) return false;
     k.cryAt = this.time;
     return true;
   }
@@ -935,12 +976,13 @@ class Game {
    */
   updateFallen(dt) {
     const many = this.corpses.length > 6 || this.npcs.length > 12;
+    let froze = false;          // (one body a frame: merging its meshes takes a moment)
     for (let i = this.corpses.length - 1; i >= 0; i--) {
       const k = this.corpses[i];
       if (!k.dead || k.state !== 'ragdoll' || k.human) continue;
       k.deadT += dt;
       const pel = k.ragBodies?.pelvis;
-      if (!k.frozen && k.deadT > CORPSE_REST && pel && (k.fell || k.deadT > CORPSE_REST * 2.5 || Math.hypot(pel.velocity.x, pel.velocity.y, pel.velocity.z) < 0.25)) { k.freeze(); k.setShadow(false); }
+      if (!k.frozen && !froze && k.deadT > CORPSE_REST && pel && (k.fell || k.deadT > CORPSE_REST * 2.5 || Math.hypot(pel.velocity.x, pel.velocity.y, pel.velocity.z) < 0.25)) { froze = true; k.freeze(); k.setShadow(false); }
       const stay = k.fell ? 12 : many ? CORPSE_STAY * 0.45 : CORPSE_STAY;
       if (k.deadT > stay && k !== this.replay.focus) {
         // into the ground, then gone
@@ -961,7 +1003,7 @@ class Game {
       if (k.ragTime > 2.5 && (!k.inj.canStand || k.inj.shock > 0.25) && Math.random() < 1 / ++n) moaner = k;
       this.groundStrike(k, dt);
     }
-    if (this.moanT <= 0) { this.moanT = rand(2.5, 6); if (moaner) this.cryOut(moaner, 'moan'); }
+    if (this.moanT <= 0) { this.moanT = rand(2.5, 5); if (moaner) this.cryOut(moaner, 'moan'); }
   }
 
   /**

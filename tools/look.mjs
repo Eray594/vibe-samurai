@@ -163,7 +163,7 @@ const open = async ({ map, size = [1280, 720], touch }) => {
   await send('Page.navigate', { url: `http://127.0.0.1:${port}/tools/serve.mjs` });
   await evaluate('try { localStorage.clear(); } catch {}');
   await send('Page.navigate', { url: `http://127.0.0.1:${port}/index.html${q ? '?' + q : ''}` });
-  for (let i = 0; i < 150; i++) { await sleep(200); if ((await evaluate('!!(window.game && window.game.player && window.game.front)')).result?.value === true) return; }
+  for (let i = 0; i < 300; i++) { await sleep(200); if ((await evaluate('!!(window.game && window.game.player && window.game.front)')).result?.value === true) return; }
   console.error('Das Spiel ist nicht gestartet.'); finish(2);
 };
 const run = async (js) => {

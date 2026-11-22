@@ -60,7 +60,7 @@ export const EN = {
 
   // ---- controls panel
   'bewegen ·': 'move ·', 'Maus': 'Mouse', 'Kamera': 'camera', 'Mausrad': 'Wheel',
-  'Ausweichschritt · halten: Sprint · im letzten Moment:': 'dodge step · hold: sprint · at the last moment:', 'Zeitlupe + Konter': 'slow motion + counter',
+  'antippen: Ausweichschritt · halten: Sprint · im letzten Moment:': 'tap: dodge step · hold: sprint · at the last moment:', 'Zeitlupe + Konter': 'slow motion + counter',
   'in einen Stoß': 'into a thrust', 'hinein:': ':', 'Klinge niedertreten': 'stomp the blade down',
   'Sprung · an der Wand nochmal:': 'jump · again at a wall:', 'Wandsprung': 'wall jump', '· gegen das Podest: klettern': '· against the podium: climb',
   'über einen Feger': 'over a sweep', ', dann': ', then', 'Sprungtritt': 'jump kick',

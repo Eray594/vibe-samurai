@@ -123,7 +123,7 @@ async function runSuite(b, file) {
   const query = [process.env.SEED ? 'seed=' + process.env.SEED : '', vp?.[3] ? 'touch' : ''].filter(Boolean).join('&');
   const url = BASE + (query ? '?' + query : '');
   const ready = async () => {
-    for (let i = 0; i < 120; i++) { await sleep(200); if ((await b.evaluate('!!(window.game && window.game.player && window.game.front)')).result?.value === true) return true; }
+    for (let i = 0; i < 300; i++) { await sleep(200); if ((await b.evaluate('!!(window.game && window.game.player && window.game.front)')).result?.value === true) return true; }
     return false;
   };
   // a freshly loaded game with nothing in storage but what the suite asks for
@@ -137,7 +137,7 @@ async function runSuite(b, file) {
     await b.send('Page.navigate', { url });
     up = await ready();
   }
-  report(up, 'Spiel startet', b.errors[0] || 'kein Spielobjekt nach 24 s');
+  report(up, 'Spiel startet', b.errors[0] || 'kein Spielobjekt nach 60 s');
   if (up) {
     const res = await b.evaluate(`(async () => { ${prelude}\n${body}\nreturn checks; })()`);
     let list = res.result?.value;

@@ -110,11 +110,15 @@ export class Quality {
         if (sun.shadow.map) { sun.shadow.map.dispose(); sun.shadow.map = null; }
       }
     }
+    // (how many lights there are, and whether there are shadows, is built into every shader: when that changes, build them
+    // all again now, in one go, rather than one by one in the middle of the fight that follows)
+    if (old && (old.lights !== L.lights || (old.shadow > 0) !== (L.shadow > 0))) this.rewarm = true;
     g.lanternLights = L.lights;
     g.shadowBudget = [0, 0, 3, 5, 7, 8][level];      // how many opponents throw a shadow (the nearest ones)
     g.arena.breakables.setLightBudget?.(L.lights);
     this.settleT = 1.5;
     this.goodT = this.badT = 0;
+    if (this.rewarm) { this.rewarm = false; g.prewarm?.(); }
   }
 
   /** Call once per frame with the real frame time. */
@@ -132,12 +136,26 @@ export class Quality {
     this.ceilT -= span;
     if (this.ceilT <= 0) this.ceiling = LEVELS.length - 1;
     const target = Math.min(this.refresh, 240);
-    if (this.fps < target * 0.86 && this.fps < 118) {
-      // not holding the display's rate: step down (quickly when it is really bad)
+    // "Not fluid" is a rate below about 54 pictures a second, whatever the display could show: someone playing at
+    // 110 on a 144 Hz screen has no trouble that lower quality should cure.
+    const floor = Math.min(target, 60) * 0.9;
+    this.lockT = Math.max(0, (this.lockT || 0) - span);
+    if (this.trial) {
+      // a step down was just taken: did it buy anything? If not, the graphics card is not what holds the rate down
+      // (it is the processor, the browser, the display), and worse pictures are no cure: take the step back and leave it be
+      this.trial.t -= span;
+      if (this.trial.t > 0) return;
+      const { from, fps } = this.trial;
+      this.trial = null;
+      if (this.fps < fps * 1.12) { this.lockT = 300; this.ceiling = LEVELS.length - 1; this.apply(from); return; }
+    }
+    if (this.fps < floor) {
+      // not fluid: step down (sooner when it is really bad), unless that was tried and did not help
       this.badT += span; this.goodT = 0;
-      if (this.badT >= (this.fps < target * 0.6 ? 1.5 : 3.5) && this.level > 0) {      // (a hitch is not a reason: only a rate that stays low)
+      if (this.badT >= (this.fps < floor * 0.6 ? 1.5 : 3.5) && this.level > 0 && this.lockT <= 0) {      // (a hitch is not a reason: only a rate that stays low)
         // remember that this level was too much, for longer each time it fails again
         this.ceiling = this.level - 1; this.ceilHold = Math.min(600, (this.ceilHold || 60) * 2); this.ceilT = this.ceilHold;
+        this.trial = { from: this.level, fps: this.fps, t: 2.5 };
         this.apply(this.level - 1);
       }
     } else if (this.fps > target * 0.95) {
