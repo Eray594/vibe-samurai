@@ -518,6 +518,7 @@ class Game {
     this.ui.mode.textContent = MODES[mode].name;
     document.body.classList.toggle('sandbox', this.sandbox);
     document.body.dataset.playing = mode;
+    this.fitBar?.();
     this.resetArena();
   }
 
@@ -2108,6 +2109,7 @@ class Game {
     // how much room the bar at the top takes (it wraps on narrow screens): panels below it keep clear of it
     const bar = $('topbar'), room = () => { this.barH = Math.ceil(bar.getBoundingClientRect().bottom); document.documentElement.style.setProperty('--bar', this.barH + 'px'); };
     room();
+    this.fitBar = room;          // (also asked for directly whenever the bar's contents change: the observer only reports a frame later)
     if (window.ResizeObserver) new ResizeObserver(room).observe(bar);
     addEventListener('resize', room);
 
@@ -2142,6 +2144,7 @@ class Game {
 
   /** The panel that lists the controls: shown, or put away behind a small chip. The choice is kept. */
   setHelp(show) {
+    this.fitBar?.();
     this.ui.help.classList.toggle('hidden', !show);
     this.ui.helpOpen.classList.toggle('hidden', show);
     if (this.settings.help !== show) this.settings.set('help', show);

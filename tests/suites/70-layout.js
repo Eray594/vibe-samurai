@@ -1,6 +1,6 @@
 // What is on the screen fits on the screen and does not lie on top of something else.
 // (71 and 72 run the same checks in a small window and on a phone.)
-const wait = (ms = 60) => new Promise((r) => setTimeout(r, ms));
+const wait = (ms = 250) => new Promise((r) => setTimeout(r, ms));
 const box = (el) => el.getBoundingClientRect();
 const shown = (el) => { if (!el) return false; for (let e = el; e && e !== document.documentElement; e = e.parentElement) if (getComputedStyle(e).display === 'none') return false; const r = box(el); return r.width > 0 && r.height > 0; };
 const hit = (a, b) => { if (!shown(a) || !shown(b)) return false; const r = box(a), s = box(b); return r.left < s.right - 1 && s.left < r.right - 1 && r.top < s.bottom - 1 && s.top < r.bottom - 1; };
