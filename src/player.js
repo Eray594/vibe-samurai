@@ -522,7 +522,7 @@ export class PlayerController {
     // a dodge asked for a moment too early (still recovering from the last step, a kick, a landing) is not lost:
     // it is taken as soon as the feet are free
     const shiftNow = (pressed.has('ShiftLeft') || pressed.has('ShiftRight')) && !broken;
-    this.dodgeBuf = shiftNow ? 0.24 : Math.max(0, (this.dodgeBuf || 0) - dt);
+    this.dodgeBuf = shiftNow ? 0.16 : Math.max(0, (this.dodgeBuf || 0) - dt);
     if (broken) this.dodgeBuf = 0;
     if (shiftNow || this.dodgeBuf > 0) {
       const d = moving ? _v.set(mx, 0, mz) : k.forward(_v).negate();

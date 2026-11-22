@@ -168,6 +168,21 @@
 </div>
 <div id="death"><div id="death-cause">NIEDERGESTRECKT</div><small id="death-sub">Neuer Versuch …</small></div>
 
-<script type="module" src="src/main.js"></script>
+<script type="module">
+  // After an update a browser may still hold some of the game's files from before and mix old with new (the
+  // game then stutters, or parts of it are missing). So: ask the server about every source file first — a few
+  // short questions, answered "unchanged" nearly always — and only then load the game.
+  const seen = new Set();
+  const fresh = async (url) => {
+    if (seen.has(url)) return;
+    seen.add(url);
+    try {
+      const text = await (await fetch(url, { cache: 'no-cache' })).text();
+      await Promise.all([...text.matchAll(/from '(\.\/[\w.-]+\.js)'/g)].map((m) => fresh(new URL(m[1], url).href)));
+    } catch { /* offline or blocked: load what there is */ }
+  };
+  await fresh(new URL('src/main.js', location.href).href);
+  await import('./src/main.js');
+</script>
 </body>
 </html>

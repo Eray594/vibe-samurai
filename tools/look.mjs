@@ -5,6 +5,7 @@
 //   node tools/look.mjs now perks phone      only the scenes whose name contains one of these words
 //   node tools/look.mjs --diff before now    which scenes differ, and by how much (a changed pixel: any channel off by > 24)
 //   node tools/look.mjs --list               the scenes there are
+//   GPU=1 node tools/look.mjs ...            on the real graphics card instead of the software renderer (to measure frame times)
 //   node tools/look.mjs --eval "<js>" [--map cliff] [--size 844x390] [--touch] [--png out.png]
 //                                            run a snippet in the game (test prelude available) and print what it returns
 // Chance is seeded anew for every scene, so the same code draws the same picture and a difference means a change.
@@ -89,7 +90,7 @@ const port = 8900 + Math.floor(Math.random() * 400), dbg = 9400 + Math.floor(Mat
 const profile = mkdtempSync(join(tmpdir(), 'vibe-samurai-look-'));
 const server = spawn(process.execPath, [join(ROOT, 'tools/serve.mjs'), String(port)], { stdio: 'ignore' });
 const chrome = spawn(CHROME, ['--headless=new', `--remote-debugging-port=${dbg}`, `--user-data-dir=${profile}`, '--window-size=1280,720',
-  '--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--mute-audio', '--no-first-run', '--no-sandbox', 'about:blank'], { stdio: 'ignore' });
+  ...(process.env.GPU ? ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] : ['--enable-unsafe-swiftshader', '--use-angle=swiftshader']), '--mute-audio', '--no-first-run', '--no-sandbox', 'about:blank'], { stdio: 'ignore' });
 const finish = (code) => { chrome.kill(); server.kill(); try { rmSync(profile, { recursive: true, force: true }); } catch { /* in use */ } process.exit(code); };
 setTimeout(() => { console.error('Zeitüberschreitung.'); finish(3); }, 600000).unref();
 let wsUrl;

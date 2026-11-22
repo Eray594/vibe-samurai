@@ -39,8 +39,17 @@ URL="http://localhost:$PORT/"
 echo "VIBE SAMURAI läuft auf $URL  –  Beenden mit Strg+C"
 (sleep 1; open_browser "$URL") &
 
-if command -v python3 >/dev/null 2>&1; then exec python3 -m http.server "$PORT" --bind 127.0.0.1
-elif command -v python >/dev/null 2>&1 && python -c 'import sys; sys.exit(sys.version_info[0] < 3)'; then exec python -m http.server "$PORT" --bind 127.0.0.1
+# Python liefert von Haus aus ohne Cache-Angabe aus: der Browser mischt dann nach einem Update alte und neue
+# Dateien. Darum ein Server, der das Zwischenspeichern verbietet.
+PYSERVE='import sys, http.server, functools
+class H(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+    def log_message(self, *a): pass
+http.server.ThreadingHTTPServer(("127.0.0.1", int(sys.argv[1])), H).serve_forever()'
+if command -v python3 >/dev/null 2>&1; then exec python3 -c "$PYSERVE" "$PORT"
+elif command -v python >/dev/null 2>&1 && python -c 'import sys; sys.exit(sys.version_info[0] < 3)'; then exec python -c "$PYSERVE" "$PORT"
 elif command -v node >/dev/null 2>&1; then exec node tools/serve.mjs "$PORT"
 elif command -v php >/dev/null 2>&1; then exec php -S "127.0.0.1:$PORT"
 elif command -v ruby >/dev/null 2>&1; then exec ruby -run -e httpd . -p "$PORT" -b 127.0.0.1

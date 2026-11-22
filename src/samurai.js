@@ -574,7 +574,8 @@ export class Samurai {
       maxA = 0;
       if (this.dashSp > 0 && !this.airborne) {
         // a step is a push, not a slide at one speed: quickest as the foot leaves the ground, easing into the next stride
-        const u = clamp(1 - this.dashT / this.dashDur, 0, 1), f = 1.28 - 0.8 * u * u;
+        // (never faster than the step used to be: it is the ending that is softer)
+        const u = clamp(1 - this.dashT / this.dashDur, 0, 1), f = 1 - 0.42 * u * u;
         b.velocity.x = this.dashDir.x * this.dashSp * f; b.velocity.z = this.dashDir.z * this.dashSp * f;
       }
     } else if (this.glideT > 0) { this.glideT -= h; maxA *= 0.55; }
@@ -823,10 +824,10 @@ export class Samurai {
     // lean into the dash
     b.angularVelocity.x += dir.z * -2.2;
     b.angularVelocity.z += dir.x * 2.2;
-    this.dashT = this.dashDur = dg.time * wet;
+    this.dashT = this.dashDur = dg.time * wet * 1.16;      // (a little longer, because it slows towards its end: the same ground covered)
     this.dashDir.set(dir.x, 0, dir.z).normalize();
     this.dashSp = sp;
-    this.glideT = 0.14;
+    this.glideT = 0.1;
     this.iframeT = dg.iframe;
     this.slideT = 0;
     this.dodgeKind = kind;

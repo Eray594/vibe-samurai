@@ -109,7 +109,7 @@ const far = () => { fresh(0, 11); P.iframeT = 99; };
   const x0 = P.core.position.x; tap('ShiftLeft', 1);
   const sp = [];
   for (let f = 0; f < 12 && P.dashT > 0; f++) { sp.push(Math.hypot(P.core.velocity.x, P.core.velocity.z)); step(1); }
-  check('Ausweichen: ein Stoß, der ausläuft, kein Gleiten mit gleichbleibendem Tempo', sp.length >= 6 && sp[1] > sp[sp.length - 1] * 1.25 && sp[1] > 9, sp.map((v) => +v.toFixed(1)));
+  check('Ausweichen: ein Stoß, der ausläuft, kein Gleiten mit gleichbleibendem Tempo', sp.length >= 6 && sp[1] > sp[sp.length - 1] * 1.25 && sp[1] > 9 && Math.max(...sp) < 13.2, sp.map((v) => +v.toFixed(1)));
   step(20);
   check('Ausweichen: der Schritt trägt weit genug', Math.abs(P.core.position.x - x0) > 1.7, P.core.position.x - x0);
   // a second press while the feet are not free yet (too late for a roll, too early for a step) is taken when they are

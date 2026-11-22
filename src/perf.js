@@ -135,7 +135,7 @@ export class Quality {
     if (this.fps < target * 0.86 && this.fps < 118) {
       // not holding the display's rate: step down (quickly when it is really bad)
       this.badT += span; this.goodT = 0;
-      if (this.badT >= (this.fps < target * 0.6 ? 0.5 : 1.5) && this.level > 0) {
+      if (this.badT >= (this.fps < target * 0.6 ? 1.5 : 3.5) && this.level > 0) {      // (a hitch is not a reason: only a rate that stays low)
         // remember that this level was too much, for longer each time it fails again
         this.ceiling = this.level - 1; this.ceilHold = Math.min(600, (this.ceilHold || 60) * 2); this.ceilT = this.ceilHold;
         this.apply(this.level - 1);
